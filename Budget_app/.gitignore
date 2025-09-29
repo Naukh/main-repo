@@ -1,0 +1,5 @@
+# Files to be ignored from git commits
+
+**/*.exe
+**/*.json
+**/**/outputs
