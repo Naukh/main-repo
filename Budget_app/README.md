@@ -79,31 +79,6 @@ Keep your categories consistent. A typo like Grocries will create a separate cat
 
 Back up the data/ folder regularly — it’s the single source of truth.
 
-## 🏋️ Exercises (Learning by Doing)
-
-Run the workflow:
-
-Create 2–3 months with init_month.py.
-
-Add some budget and expense rows.
-
-Run summarize.py and open the outputs.
-
-Check correctness:
-Open outputs/summary_by_category.csv and verify the numbers by hand.
-
-Add Subcategory support:
-Modify summarize.py to group by month, Category, Subcategory.
-
-Filter summaries:
-Extend summarize.py to accept --category Groceries and plot a trend just for groceries.
-
-Category validation:
-Create a templates/categories.json with allowed categories and modify add_transaction.py to warn if someone enters a new/typo category.
-
-HTML report:
-Extend summarize.py to generate a richer HTML report with charts embedded.
-
 ## 🚀 Next Steps
 
 Once you’re comfortable with this CSV-based system:
