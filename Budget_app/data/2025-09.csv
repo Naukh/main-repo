@@ -1,6 +1,6 @@
 EntryType,Date,Category,Subcategory,Description,Budgeted,Actual,Account,Notes
 income,,Salary,Monthly salary,Monthly salary,35190,35190,Checking,
-budget,,Housing,Rent / Principle,Monthly rent/ Principle,8400,8400,Checking,
+budget,,Housing,Rent / Principle,Monthly rent/ Principle,8400,13000,Checking,
 budget,,Housing,Interest Mortgage,Interest payment,3250,3590,Checking,
 budget,,Housing,Phone,Data package,195,,Checking,
 budget,,Housing,Electricity Grid fee,Network fee electricity,250,225,Checking,
