@@ -38,7 +38,7 @@ def main():
     parser.add_argument("-a", "--actual", type=float, default=None)
     parser.add_argument("-acc", "--account", default="")
     parser.add_argument("-n", "--notes", default="")
-    parser.add_argument("-d", "--data-dir", default="../data")
+    parser.add_argument("-d", "--data-dir", default="../data/Monthly_budget_file")
     args = parser.parse_args()
 
     path = os.path.join(args.data_dir, f"{args.month}.csv")

@@ -22,12 +22,12 @@ import matplotlib.dates as mdates
 # =============================
 # CONFIG
 # =============================
-CSV_FILE = Path("./Mortgage_payments.csv")
+CSV_FILE = Path("../data/Mortgage_data_file/Mortgage_payments.csv")
 OUTPUT_DIR = Path("../outputs")
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
-HTML_FILE = OUTPUT_DIR / "amortization_table.html"
-PNG_FILE = OUTPUT_DIR / "payment_graph.png"
+HTML_FILE = OUTPUT_DIR / "Mortgage_payment_summary.html"
+PNG_FILE = OUTPUT_DIR / "Mortgage_payment_graph.png"
 
 # Loan simulation parameters
 ANNUAL_INTEREST_RATE = 2.45  # annual rate in %

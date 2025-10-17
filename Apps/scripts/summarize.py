@@ -260,7 +260,7 @@ def generate_category_sections(grouped, scale_factor=5 / 150000):
 # ---------- HTML writer ----------
 def write_html_report(output_dir, month_totals, charts, category_summary_html):
     """Render and write dark-themed HTML report."""
-    html_path = os.path.join(output_dir, "summary_report.html")
+    html_path = os.path.join(output_dir, "summary_monthly_budget.html")
     html_content = f"""
     <html>
     <head>
@@ -331,7 +331,7 @@ def write_outputs(grouped, income, output_dir):
     """Main entry: orchestrates CSV, plots, and HTML report generation."""
     os.makedirs(output_dir, exist_ok=True)
 
-    csv_path = os.path.join(output_dir, "summary_by_category.csv")
+    csv_path = os.path.join(output_dir, "summary_monthly_budget.csv")
     safe_save(grouped.to_csv, csv_path, index=False)
 
     month_totals = prepare_month_totals(grouped, income)
@@ -345,7 +345,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-d", "--data-dir", default="../data", help="Directory with input CSV files"
+        "-d", "--data-dir", default="../data/Monthly_budget_file", help="Directory with input CSV files"
     )
     parser.add_argument(
         "-o", "--output-dir", default="../outputs", help="Directory to save outputs"
