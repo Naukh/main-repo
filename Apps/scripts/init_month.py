@@ -11,7 +11,7 @@ import shutil
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--month", required=True, help="Month in YYYY-MM format (e.g. 2025-08)")
-    parser.add_argument("-t", "--template", default="../templates/month_template.csv", help="Path to template CSV")
+    parser.add_argument("-t", "--template", default="../templates/Monthly_budget/month_template.csv", help="Path to template CSV")
     parser.add_argument("-d", "--data-dir", default="../data/Monthly_budget_file", help="Directory to store month CSVs")
     parser.add_argument("-f", "--force", action="store_true", help="Overwrite if file exists")
     args = parser.parse_args()
