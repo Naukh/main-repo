@@ -17,7 +17,7 @@ import chardet
 import base64
 from io import BytesIO
 
-logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+# logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
 
 def detect_encoding(file_path):
@@ -350,7 +350,17 @@ def main():
     parser.add_argument(
         "-o", "--output-dir", default="../outputs", help="Directory to save outputs"
     )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose logging output."
+    )
     args = parser.parse_args()
+
+    if args.verbose:
+        logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+        logging.getLogger().setLevel(logging.INFO)
+        logging.info("Verbose mode enabled.")
+    else:
+        logging.disable(logging.CRITICAL)  # silence all logging
 
     df = read_all_months(args.data_dir)
     if df.empty:
