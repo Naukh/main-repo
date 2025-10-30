@@ -6,8 +6,6 @@ Loan payoff simulator (CSV + forecast)
 - Continues simulation from last point using original loan amount.
 - Generates amortization table (HTML) and two-panel plot (PNG).
 - Includes loan summary section in HTML.
-
-Author: ChatGPT
 """
 
 import pandas as pd
@@ -72,7 +70,7 @@ def load_csv_data(csv_path):
     # The *original* loan is the first nonzero Balance in the CSV
     original_loan = df.loc[df["Balance"] > 0, "Balance"].iloc[0]
 
-    return original_loan, current_balance, cumulative_principal, cumulative_interest
+    return original_loan, current_balance, cumulative_principal, cumulative_interest, df
 
 
 def simulate_loan(
@@ -177,6 +175,24 @@ def plot_results(df, output_path):
     plt.close()
     print(f"Saved plot: {output_path.resolve()}")
 
+def add_tfoot_to_html_table(html):
+    """Ensure the table has a <tfoot> with the same headers as <thead> for column search."""
+    if "<tfoot>" in html:
+        return html  # already has tfoot
+
+    import re
+
+    thead_match = re.search(r"<thead>(.*?)</thead>", html, re.DOTALL)
+    if not thead_match:
+        return html  # no thead, skip
+
+    headers_html = thead_match.group(1)
+    # Wrap same headers in <tfoot>
+    tfoot_html = f"<tfoot>{headers_html}</tfoot>"
+
+    # Insert tfoot just before </table>
+    html = html.replace("</table>", f"{tfoot_html}</table>")
+    return html
 
 def write_html(
     sim_df,
@@ -188,6 +204,7 @@ def write_html(
     total_interest,
     html_file,
     plot_file,
+    history_df,
 ):
     """Generate dark-themed HTML report with summary and payment plan table."""
 
@@ -260,6 +277,28 @@ def write_html(
     </table>
     """
 
+    # --- Historical payments table ---
+    history_format_cols = ["Interest", "Principal", "Total", "Balance", "Interest_Rate"]
+    history_format = {col: lambda x: f"{x:,.2f}" for col in history_format_cols}
+
+    history_df.columns = history_df.columns.str.strip()
+
+    history_table_html = history_df.to_html(
+        index=False,
+        formatters=history_format,
+        border=0,
+        justify="center",
+        classes="history-table",
+    )
+    history_table_html = add_tfoot_to_html_table(history_table_html)
+
+    history_section = f"""
+    <h2>Historic Payments</h2>
+    <p>The table below shows all actual mortgage payments recorded so far:</p>
+    {history_table_html}
+    """
+
+
     # --- Format numeric columns ---
     cols_to_format = [
         "Payment",
@@ -279,6 +318,7 @@ def write_html(
         justify="center",
         classes="payment-table",
     )
+    payment_plan_table_html = add_tfoot_to_html_table(payment_plan_table_html)
 
     # --- Payment plan section ---
     payment_plan_html = f"""
@@ -296,13 +336,80 @@ def write_html(
         <meta charset="UTF-8">
         <title>Loan Report</title>
         {dark_style}
+
+        <!-- DataTables CSS -->
+        <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+
+        <!-- jQuery + DataTables -->
+        <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+        <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
+        <!-- Dark theme for DataTables -->
+        <style>
+            .dataTables_wrapper .dataTables_filter label,
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate{{
+                color: #fff
+            }}
+            .dataTables_wrapper .dataTables_paginate .paginate_button {{
+                color: #fff !important;
+            }}
+            .dataTables_wrapper .dataTables_paginate .paginate_button.current {{
+                background: #444 !important;
+                color: white !important;
+            }}
+            .dataTables_length label {{ color: white; }}
+            .dataTables_length label,
+            .dataTables_length select {{
+                color: #fff !important;
+                background-color: #1f1f1f !important;
+            }}
+            table.dataTable thead th {{ color: #80cbc4; }}
+        </style>
     </head>
+
     <body>
         {summary_html}
+        {history_section}
         {payment_plan_html}
+
+        <!-- Activate DataTables -->
+        <script>
+        $(document).ready(function() {{
+            $('.history-table, .payment-table').each(function() {{
+                var table = $(this).DataTable({{
+                    lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]],
+                    pageLength: 25,
+                    order: [],
+                    orderMulti: true,
+                    searching: true,
+                    paging: true,
+                    info: true
+                }});
+
+                // Add input boxes in footer for each column
+                $(this).find('tfoot th').each(function() {{
+                    var title = $(this).text();
+                    $(this).html('<input type="text" placeholder="Search ' + title + '" style="width:100%;"/>');
+                }});
+
+                // Apply column search
+                table.columns().every(function() {{
+                    var that = this;
+                    $('input', this.footer()).on('keyup change clear', function() {{
+                        if (that.search() !== this.value) {{
+                            that.search(this.value).draw();
+                        }}
+                    }});
+                }});
+            }});
+        }});
+    </script>
+
     </body>
     </html>
     """
+
 
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(full_html)
@@ -314,7 +421,7 @@ def write_html(
 # MAIN
 # =============================
 def main():
-    original_loan, current_balance, cumulative_principal, cumulative_interest = (
+    original_loan, current_balance, cumulative_principal, cumulative_interest, history_df = (
         load_csv_data(CSV_FILE)
     )
 
@@ -355,6 +462,7 @@ def main():
         total_interest,
         HTML_FILE,
         PNG_FILE,
+        history_df,
     )
 
 
