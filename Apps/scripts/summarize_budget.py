@@ -259,55 +259,73 @@ def generate_category_sections(grouped, scale_factor=5 / 150000):
 
 # ---------- HTML writer ----------
 def write_html_report(output_dir, month_totals, charts, category_summary_html):
-    """Render and write dark-themed HTML report."""
+    """Render dark HTML report where ONLY the 'Income & Totals' table is a DataTable."""
+    import os, re
+    
     html_path = os.path.join(output_dir, "summary_monthly_budget.html")
+
+    # Convert month_totals to DataTable (only this table)
+    month_table = month_totals.to_html(
+        index=False, border=0, justify='center', classes="dt-summary-table"
+    )
+
+    # Add <tfoot> for column search
+    def add_tfoot(tbl):
+        if "<tfoot>" in tbl:
+            return tbl
+        m = re.search(r"<thead>(.*?)</thead>", tbl, re.DOTALL)
+        if not m:
+            return tbl
+        headers = m.group(1)
+        return tbl.replace("</table>", f"<tfoot>{headers}</tfoot></table>")
+
+    month_table = add_tfoot(month_table)
+
     html_content = f"""
     <html>
     <head>
         <title>Budget Summary Report</title>
+
+        <!-- jQuery & DataTables -->
+        <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+        <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+        <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
         <style>
             body {{
-                background-color: #121212;
-                color: #ffffff;
-                font-family: Arial, sans-serif;
-                margin: 40px;
+                background-color: #121212; color: #ffffff;
+                font-family: Arial, sans-serif; margin: 40px;
             }}
-            h1, h2, h3 {{
-                color: #80cbc4;
-            }}
-            table {{
-                border-collapse: collapse;
-                margin: 20px 0;
-                width: 100%;
-            }}
-            table, th, td {{
-                border: 1px solid #444;
-                padding: 8px;
-                text-align: right;
-            }}
-            th {{
-                background-color: #1f1f1f;
-                color: #ffffff;
-                text-align: center;
-            }}
+            h1, h2, h3 {{ color: #80cbc4; }}
+            table {{ border-collapse: collapse; margin: 20px 0; width: 100%; }}
+            table, th, td {{ border: 1px solid #444; padding: 8px; text-align: right; }}
+            th {{ background-color: #1f1f1f; text-align: center; }}
             tr:nth-child(even) {{ background-color: #1a1a1a; }}
             tr:nth-child(odd) {{ background-color: #222; }}
             td:first-child {{ text-align: left; font-weight: bold; }}
             img {{
-                max-width: 100%;
-                height: auto;
-                margin: 20px 0;
-                border: 1px solid #444;
-                border-radius: 8px;
-                box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
+                max-width: 100%; margin: 20px 0;
+                border: 1px solid #444; border-radius: 8px;
+                box-shadow: 0 0 8px rgba(255,255,255,0.1);
             }}
+            .dataTables_wrapper .dataTables_filter label,
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate {{
+                color: #fff;
+            }}
+            .dataTables_length label,
+            .dataTables_length select {{
+                color:#fff!important; background:#1f1f1f!important;
+            }}
+            table.dataTable thead th {{ color:#80cbc4; }}
         </style>
     </head>
+
     <body>
         <h1>Budget Summary Report</h1>
 
         <h2>Income & Totals</h2>
-        {month_totals.to_html(index=False, border=0, justify='center')}
+        {month_table}
 
         <h2>Charts</h2>
         <h3>Line Graph</h3><img src="data:image/png;base64,{charts['line']}" />
@@ -316,6 +334,35 @@ def write_html_report(output_dir, month_totals, charts, category_summary_html):
 
         <h1>Category Summary (Actuals by Month)</h1>
         {category_summary_html}
+
+        <!-- Activate DataTables for ONLY the first summary table -->
+        <script>
+        $(document).ready(function() {{
+            var table = $('.dt-summary-table').DataTable({{
+                pageLength: 25,
+                lengthMenu: [[10, 25, 50, -1],[10, 25, 50, "All"]],
+                order: [],
+                orderMulti: true,
+                searching: true,
+                paging: true,
+                info: true
+            }});
+
+            // Add search boxes in footer
+            $('.dt-summary-table tfoot th').each(function() {{
+                $(this).html('<input type="text" placeholder="Search" style="width:100%;font-size:11px;" />');
+            }});
+
+            table.columns().every(function() {{
+                var that = this;
+                $('input', this.footer()).on('keyup change clear', function() {{
+                    if (that.search() !== this.value) {{
+                        that.search(this.value).draw();
+                    }}
+                }});
+            }});
+        }});
+        </script>
     </body>
     </html>
     """
@@ -323,7 +370,8 @@ def write_html_report(output_dir, month_totals, charts, category_summary_html):
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    logging.info("Saved dark-themed HTML report to %s", html_path)
+    print(f"Saved report with DataTable on summary table: {html_path}")
+
 
 
 # ---------- Main wrapper ----------
