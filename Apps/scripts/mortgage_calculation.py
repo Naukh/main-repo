@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 """
-Loan payoff simulator (CSV + forecast)
-
-- Reads cumulative principal, interest, and balance from CSV.
-- Continues simulation from last point using original loan amount.
-- Generates amortization table (HTML) and two-panel plot (PNG).
-- Includes loan summary section in HTML.
+Loan payoff simulator — HTML report with summary, historic payments, and payment plan.
 """
 
 import pandas as pd
@@ -17,9 +12,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-# =============================
+# ----------------------------
 # CONFIG
-# =============================
+# ----------------------------
 CSV_FILE = Path("../data/Mortgage_data_file/Mortgage_payments.csv")
 OUTPUT_DIR = Path("../outputs")
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
@@ -27,18 +22,16 @@ OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 HTML_FILE = OUTPUT_DIR / "Mortgage_payment_summary.html"
 PNG_FILE = OUTPUT_DIR / "Mortgage_payment_graph.png"
 
-# Loan simulation parameters
-ANNUAL_INTEREST_RATE = 2.45  # annual rate in %
-MIN_PRINCIPAL_ANNUAL_PCT = 2.0  # min principal % of total loan
-FIXED_MONTHLY_PAYMENT = 12_000.0  # use None if no fixed payment value is to be used
+ANNUAL_INTEREST_RATE = 2.45
+MIN_PRINCIPAL_ANNUAL_PCT = 2.0
+FIXED_MONTHLY_PAYMENT = 12_000.0
 MAX_MONTHS = 2000
-START_MONTH = datetime(2025, 10, 1)  # next period start
-
-# =============================
-# FUNCTIONS
-# =============================
+START_MONTH = datetime(2025, 10, 1)
 
 
+# ----------------------------
+# HELPERS
+# ----------------------------
 def load_csv_data(csv_path):
     """Load the CSV and extract cumulative values and original principal."""
     if not csv_path.exists():
@@ -60,7 +53,6 @@ def load_csv_data(csv_path):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
         else:
-            # Column missing, fill with zeros
             df[col] = 0.0
 
     cumulative_interest = df["Interest"].sum()
@@ -83,80 +75,51 @@ def simulate_loan(
     original_loan,
     max_months=2000,
 ):
-    """Simulate loan amortization from current balance."""
     monthly_rate = annual_rate / 12.0 / 100.0
     min_monthly_principal = original_loan * (min_principal_annual_pct / 100.0) / 12.0
-
-    rows = []
-    balance = principal_remaining
-    month = 0
+    rows, balance, month = [], principal_remaining, 0
 
     while balance > 1e-8 and month < max_months:
         month += 1
         interest = balance * monthly_rate
         required_min_payment = interest + min_monthly_principal
-
-        payment = (
-            fixed_monthly_payment
-            if fixed_monthly_payment is not None
-            else required_min_payment
-        )
+        payment = fixed_monthly_payment if fixed_monthly_payment else required_min_payment
         payment = max(payment, required_min_payment)
-
-        principal_payment = payment - interest
-        if principal_payment > balance:
-            principal_payment = balance
-            payment = interest + principal_payment
-
+        principal_payment = min(payment - interest, balance)
+        payment = interest + principal_payment
         balance -= principal_payment
         cumulative_interest += interest
         cumulative_principal += principal_payment
-
-        rows.append(
-            {
-                "Month": month,
-                "Payment": round(payment, 2),
-                "Interest": round(interest, 2),
-                "Principal Paid": round(principal_payment, 2),
-                "Remaining Balance": round(balance, 2),
-                "Cumulative Interest": round(cumulative_interest, 2),
-                "Cumulative Principal": round(cumulative_principal, 2),
-                "Required Min Payment": round(required_min_payment, 2),
-            }
-        )
-
+        rows.append({
+            "Month": month,
+            "Payment": round(payment, 2),
+            "Interest": round(interest, 2),
+            "Principal Paid": round(principal_payment, 2),
+            "Remaining Balance": round(balance, 2),
+            "Cumulative Interest": round(cumulative_interest, 2),
+            "Cumulative Principal": round(cumulative_principal, 2),
+            "Required Min Payment": round(required_min_payment, 2),
+        })
         if payment <= interest + 1e-12:
-            print("Payment only covers interest — loan will not amortize.")
+            print("Warning: Payment only covers interest — loan will not amortize.")
             break
-
     return pd.DataFrame(rows)
 
 
 def plot_results(df, output_path):
-    """Generate dark-themed two-panel plot with independent axes and clear formatting."""
     df["Date"] = pd.date_range(start=START_MONTH, periods=len(df), freq="MS")
-
-    # --- Dark theme settings ---
-    plt.style.use("dark_background")  # built-in dark style
+    plt.style.use("dark_background")
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), facecolor="#121212")
     ax1.set_facecolor("#1a1a1a")
     ax2.set_facecolor("#1a1a1a")
-
-    # --- Top: Remaining balance ---
     ax1.plot(df["Date"], df["Remaining Balance"] / 1000, color="#64b5f6", linewidth=2)
-    ax1.set_title("Loan Remaining Balance Over Time (in thousands SEK)", color="white", pad=10)
-    ax1.set_ylabel("Balance (thousands SEK)", color="white")
-    ax1.set_xlabel("Date", labelpad=10, color="white")
+    ax1.set_title("Loan Remaining Balance (thousands SEK)", color="white", pad=10)
+    ax1.set_ylabel("Balance", color="white")
     ax1.grid(True, linestyle="--", alpha=0.3, color="white")
-
-    # --- Bottom: Monthly payments ---
     ax2.plot(df["Date"], df["Payment"] / 1000, color="#81c784", linewidth=2)
-    ax2.set_title("Monthly Payment Over Time (in thousands SEK)", color="white", pad=10)
-    ax2.set_ylabel("Payment (thousands SEK)", color="white")
-    ax2.set_xlabel("Date", labelpad=10, color="white")
+    ax2.set_title("Monthly Payment (thousands SEK)", color="white", pad=10)
+    ax2.set_ylabel("Payment", color="white")
     ax2.grid(True, linestyle="--", alpha=0.3, color="white")
-
-    # --- X-axis formatting ---
     locator = mdates.MonthLocator(interval=6)
     formatter = mdates.DateFormatter("%b-%Y")
     for ax in (ax1, ax2):
@@ -166,34 +129,15 @@ def plot_results(df, output_path):
         ax.tick_params(axis="y", colors="white")
         for spine in ax.spines.values():
             spine.set_color("#555")
-
     plt.tight_layout()
-    plt.subplots_adjust(hspace=0.5)
-
-    # --- Save dark-themed figure ---
     plt.savefig(output_path, bbox_inches="tight", dpi=150, facecolor=fig.get_facecolor())
     plt.close()
     print(f"Saved plot: {output_path.resolve()}")
 
-def add_tfoot_to_html_table(html):
-    """Ensure the table has a <tfoot> with the same headers as <thead> for column search."""
-    if "<tfoot>" in html:
-        return html  # already has tfoot
 
-    import re
-
-    thead_match = re.search(r"<thead>(.*?)</thead>", html, re.DOTALL)
-    if not thead_match:
-        return html  # no thead, skip
-
-    headers_html = thead_match.group(1)
-    # Wrap same headers in <tfoot>
-    tfoot_html = f"<tfoot>{headers_html}</tfoot>"
-
-    # Insert tfoot just before </table>
-    html = html.replace("</table>", f"{tfoot_html}</table>")
-    return html
-
+# ----------------------------
+# HTML Report (previous working version)
+# ----------------------------
 def write_html(
     sim_df,
     original_loan,
@@ -290,6 +234,8 @@ def write_html(
         justify="center",
         classes="history-table",
     )
+
+    from util.util import add_tfoot_to_html_table  # ensure this is available
     history_table_html = add_tfoot_to_html_table(history_table_html)
 
     history_section = f"""
@@ -297,7 +243,6 @@ def write_html(
     <p>The table below shows all actual mortgage payments recorded so far:</p>
     {history_table_html}
     """
-
 
     # --- Format numeric columns ---
     cols_to_format = [
@@ -387,13 +332,11 @@ def write_html(
                     info: true
                 }});
 
-                // Add input boxes in footer for each column
                 $(this).find('tfoot th').each(function() {{
                     var title = $(this).text();
                     $(this).html('<input type="text" placeholder="Search ' + title + '" style="width:100%;"/>');
                 }});
 
-                // Apply column search
                 table.columns().every(function() {{
                     var that = this;
                     $('input', this.footer()).on('keyup change clear', function() {{
@@ -410,20 +353,17 @@ def write_html(
     </html>
     """
 
-
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(full_html)
 
     print(f"Saved HTML report: {html_file.resolve()}")
 
 
-# =============================
+# ----------------------------
 # MAIN
-# =============================
+# ----------------------------
 def main():
-    original_loan, current_balance, cumulative_principal, cumulative_interest, history_df = (
-        load_csv_data(CSV_FILE)
-    )
+    original_loan, current_balance, cumulative_principal, cumulative_interest, history_df = load_csv_data(CSV_FILE)
 
     sim_df = simulate_loan(
         current_balance,
@@ -433,25 +373,23 @@ def main():
         cumulative_principal,
         cumulative_interest,
         original_loan,
-        MAX_MONTHS,
+        MAX_MONTHS
     )
 
-    # Add calendar month column
-    sim_df["Calendar Month"] = [
-        (START_MONTH + relativedelta(months=i - 1)).strftime("%b-%Y")
-        for i in sim_df["Month"]
-    ]
-    cols = ["Month", "Calendar Month"] + [
-        c for c in sim_df.columns if c not in ("Month", "Calendar Month")
-    ]
-    sim_df = sim_df[cols]
+    if not sim_df.empty:
+        sim_df["Calendar Month"] = [
+            (START_MONTH + relativedelta(months=i - 1)).strftime("%b-%Y") for i in sim_df["Month"]
+        ]
+        cols = ["Month", "Calendar Month"] + [
+            c for c in sim_df.columns if c not in ("Month", "Calendar Month")
+        ]
+        sim_df = sim_df[cols]
 
-    # Plot results
-    plot_results(sim_df, PNG_FILE)
+        plot_results(sim_df, PNG_FILE)
 
-    # Write HTML report
-    total_months = sim_df["Month"].iloc[-1]
-    total_interest = sim_df["Interest"].sum()
+    total_months = sim_df["Month"].iloc[-1] if not sim_df.empty else 0
+    total_interest = sim_df["Interest"].sum() if not sim_df.empty else 0.0
+
     write_html(
         sim_df,
         original_loan,

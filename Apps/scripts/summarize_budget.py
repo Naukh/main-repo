@@ -9,7 +9,6 @@ import os
 import glob
 import pandas as pd
 import matplotlib
-
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import logging
@@ -17,8 +16,14 @@ import chardet
 import base64
 from io import BytesIO
 
-# logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+from util.util import (
+    dark_style,
+    get_datatables_dependencies,
+    get_datatables_init_script,
+    add_tfoot_to_html_table
+)
 
+# ----------------- Utility functions -----------------
 
 def detect_encoding(file_path):
     """Detect file encoding using chardet."""
@@ -27,6 +32,25 @@ def detect_encoding(file_path):
     result = chardet.detect(raw)
     return result["encoding"]
 
+def safe_save(save_func, path, *args, **kwargs):
+    """Attempt to save a file, retry if PermissionError occurs."""
+    try:
+        save_func(path, *args, **kwargs)
+        logging.info("Saved file to %s", path)
+    except PermissionError:
+        logging.error("Permission denied when saving %s. Is the file open?", path)
+        input("Close the file and press Enter to retry...")
+        save_func(path, *args, **kwargs)
+        logging.info("Saved file to %s", path)
+
+def fig_to_base64(fig):
+    """Save Matplotlib figure to base64 string."""
+    buf = BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", facecolor=fig.get_facecolor())
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode("utf-8")
+
+# ----------------- CSV Reading & Aggregation -----------------
 
 def read_all_months(data_dir):
     """Read all CSVs from data_dir into a single DataFrame."""
@@ -35,17 +59,9 @@ def read_all_months(data_dir):
         logging.warning("No month CSV files found in %s", data_dir)
         return pd.DataFrame(
             columns=[
-                "EntryType",
-                "Date",
-                "Category",
-                "Subcategory",
-                "Description",
-                "Budgeted",
-                "Actual",
-                "Income",
-                "Account",
-                "Notes",
-                "month",
+                "EntryType", "Date", "Category", "Subcategory",
+                "Description", "Budgeted", "Actual", "Income",
+                "Account", "Notes", "month"
             ]
         )
     dfs = []
@@ -63,8 +79,8 @@ def read_all_months(data_dir):
         return pd.DataFrame()
     return pd.concat(dfs, ignore_index=True)
 
-
 def clean_and_aggregate(df):
+    """Convert numeric columns and aggregate budgets and income."""
     df["Budgeted"] = pd.to_numeric(df.get("Budgeted", 0), errors="coerce").fillna(0.0)
     df["Actual"] = pd.to_numeric(df.get("Actual", 0), errors="coerce").fillna(0.0)
     df["month"] = pd.to_datetime(df["month"], format="%Y-%m", errors="coerce")
@@ -87,41 +103,17 @@ def clean_and_aggregate(df):
 
     return grouped, income
 
-
-def safe_save(save_func, path, *args, **kwargs):
-    """Attempt to save a file, retry if PermissionError occurs."""
-    try:
-        save_func(path, *args, **kwargs)
-        logging.info("Saved file to %s", path)
-    except PermissionError:
-        logging.error("Permission denied when saving %s. Is the file open?", path)
-        input("Close the file and press Enter to retry...")
-        save_func(path, *args, **kwargs)
-        logging.info("Saved file to %s", path)
-
-
-# ---------- Utility: Save figure to Base64 ----------
-def fig_to_base64(fig):
-    buf = BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", facecolor=fig.get_facecolor())
-    buf.seek(0)
-    return base64.b64encode(buf.read()).decode("utf-8")
-
-
-# ---------- Data preparation ----------
 def prepare_month_totals(grouped, income):
     """Prepare monthly totals and balance DataFrame."""
     month_totals = grouped.groupby("month").sum()[["Actual_total"]].reset_index()
     month_totals = month_totals.merge(income, on="month", how="left").fillna(0)
-    month_totals["Balance"] = (
-        month_totals["Income_total"] - month_totals["Actual_total"]
-    )
+    month_totals["Balance"] = month_totals["Income_total"] - month_totals["Actual_total"]
     return month_totals
 
+# ----------------- Plotting -----------------
 
-# ---------- Plotting ----------
 def generate_summary_charts(month_totals):
-    """Generate Base64-encoded plots for line, stacked bar, and waterfall charts with rotated y-axis labels."""
+    """Generate Base64-encoded plots for line, stacked bar, and waterfall charts."""
     months = month_totals["month"]
     actual = month_totals["Actual_total"]
     income_total = month_totals["Income_total"]
@@ -137,40 +129,30 @@ def generate_summary_charts(month_totals):
 
     charts = {}
 
-    # ---- Line Chart ----
+    # Line Chart
     fig, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor=fig_face)
     ax.set_facecolor(ax_face)
     ax.plot(months, actual, marker="o", label="Expenses (Actual)", color="#e57373")
     ax.plot(months, income_total, marker="o", label="Income", color="#81c784")
-    ax.plot(
-        months, balance, marker="o", linestyle="--", label="Balance", color="#64b5f6"
-    )
+    ax.plot(months, balance, marker="o", linestyle="--", label="Balance", color="#64b5f6")
     ax.set_xlabel("Month", color="white")
     ax.set_ylabel("Amount [SEK]", color="white")
     ax.set_title("Line Graph: Monthly Summary", color="white")
     ax.grid(True, linestyle="--", alpha=0.3, color=grid_color)
     ax.legend()
-    # Rotate y-axis labels
     for label in ax.get_yticklabels():
         label.set_rotation(0)
-
     for spine in ax.spines.values():
         spine.set_color(grid_color)
     plt.tight_layout()
     charts["line"] = fig_to_base64(fig)
     plt.close(fig)
 
-    # ---- Stacked Bar Chart ----
+    # Stacked Bar Chart
     fig, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor=fig_face)
     ax.set_facecolor(ax_face)
     ax.bar(months, actual, label="Actual Expenses", color="#ef5350")
-    ax.bar(
-        months,
-        income_total - actual,
-        bottom=actual,
-        label="Remaining Income",
-        color="#66bb6a",
-    )
+    ax.bar(months, income_total - actual, bottom=actual, label="Remaining Income", color="#66bb6a")
     ax.set_xlabel("Month", color="white")
     ax.set_ylabel("Amount [SEK]", color="white")
     ax.set_title("Stacked Bar Chart: Income vs Expenses", color="white")
@@ -178,14 +160,13 @@ def generate_summary_charts(month_totals):
     ax.legend()
     for label in ax.get_yticklabels():
         label.set_rotation(0)
-
     for spine in ax.spines.values():
         spine.set_color(grid_color)
     plt.tight_layout()
     charts["bar"] = fig_to_base64(fig)
     plt.close(fig)
 
-    # ---- Waterfall Chart ----
+    # Waterfall Chart
     fig, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor=fig_face)
     ax.set_facecolor(ax_face)
     colors = ["#66bb6a" if x >= 0 else "#ef5350" for x in balance]
@@ -196,7 +177,6 @@ def generate_summary_charts(month_totals):
     ax.grid(True, linestyle="--", alpha=0.3, color=grid_color)
     for label in ax.get_yticklabels():
         label.set_rotation(0)
-
     for spine in ax.spines.values():
         spine.set_color(grid_color)
     plt.tight_layout()
@@ -205,13 +185,11 @@ def generate_summary_charts(month_totals):
 
     return charts
 
+# ----------------- Category Sections -----------------
 
-# ---------- Category section generation ----------
 def generate_category_sections(grouped, scale_factor=5 / 150000):
     """Generate HTML sections per category with charts."""
-    cat_totals = (
-        grouped.groupby("Category")["Actual_total"].sum().sort_values(ascending=False)
-    )
+    cat_totals = grouped.groupby("Category")["Actual_total"].sum().sort_values(ascending=False)
     sorted_categories = cat_totals.index.tolist()
     sections = []
 
@@ -219,12 +197,8 @@ def generate_category_sections(grouped, scale_factor=5 / 150000):
     fig_face, ax_face, grid_color = "#121212", "#1a1a1a", "#555"
 
     for cat in sorted_categories:
-        cat_df = grouped[grouped["Category"] == cat][
-            ["month", "Actual_total"]
-        ].sort_values("month")
-        cat_pivot = cat_df.pivot_table(
-            index=None, columns="month", values="Actual_total", aggfunc="sum"
-        ).fillna(0)
+        cat_df = grouped[grouped["Category"] == cat][["month", "Actual_total"]].sort_values("month")
+        cat_pivot = cat_df.pivot_table(index=None, columns="month", values="Actual_total", aggfunc="sum").fillna(0)
         cat_pivot.columns = [str(c) for c in cat_pivot.columns]
 
         num_months = len(cat_df["month"].unique())
@@ -256,127 +230,62 @@ def generate_category_sections(grouped, scale_factor=5 / 150000):
 
     return "\n".join(sections)
 
+# ----------------- HTML Report -----------------
 
-# ---------- HTML writer ----------
 def write_html_report(output_dir, month_totals, charts, category_summary_html):
-    """Render dark HTML report where ONLY the 'Income & Totals' table is a DataTable."""
-    import os, re
-    
+    """Render dark HTML report with DataTables on summary table."""
     html_path = os.path.join(output_dir, "summary_monthly_budget.html")
 
-    # Convert month_totals to DataTable (only this table)
-    month_table = month_totals.to_html(
-        index=False, border=0, justify='center', classes="dt-summary-table"
-    )
+    # Convert month_totals table → DataTable
+    month_table = month_totals.to_html(index=False, border=0, justify='center', classes="dt-summary-table")
+    month_table = add_tfoot_to_html_table(month_table)
 
-    # Add <tfoot> for column search
-    def add_tfoot(tbl):
-        if "<tfoot>" in tbl:
-            return tbl
-        m = re.search(r"<thead>(.*?)</thead>", tbl, re.DOTALL)
-        if not m:
-            return tbl
-        headers = m.group(1)
-        return tbl.replace("</table>", f"<tfoot>{headers}</tfoot></table>")
-
-    month_table = add_tfoot(month_table)
-
-    html_content = f"""
+    html = f"""
     <html>
     <head>
         <title>Budget Summary Report</title>
-
-        <!-- jQuery & DataTables -->
-        <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
-        <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-        <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-
+        {get_datatables_dependencies()}
         <style>
             body {{
-                background-color: #121212; color: #ffffff;
-                font-family: Arial, sans-serif; margin: 40px;
+                background-color:#121212;color:#fff;font-family:Arial;margin:40px;
             }}
-            h1, h2, h3 {{ color: #80cbc4; }}
-            table {{ border-collapse: collapse; margin: 20px 0; width: 100%; }}
-            table, th, td {{ border: 1px solid #444; padding: 8px; text-align: right; }}
-            th {{ background-color: #1f1f1f; text-align: center; }}
-            tr:nth-child(even) {{ background-color: #1a1a1a; }}
-            tr:nth-child(odd) {{ background-color: #222; }}
-            td:first-child {{ text-align: left; font-weight: bold; }}
-            img {{
-                max-width: 100%; margin: 20px 0;
-                border: 1px solid #444; border-radius: 8px;
-                box-shadow: 0 0 8px rgba(255,255,255,0.1);
-            }}
-            .dataTables_wrapper .dataTables_filter label,
-            .dataTables_wrapper .dataTables_info,
-            .dataTables_wrapper .dataTables_paginate {{
-                color: #fff;
-            }}
-            .dataTables_length label,
-            .dataTables_length select {{
-                color:#fff!important; background:#1f1f1f!important;
-            }}
-            table.dataTable thead th {{ color:#80cbc4; }}
+            h1,h2,h3 {{ color:#80cbc4; }}
+            table {{ border-collapse:collapse; width:100%; margin:20px 0; }}
+            table,th,td {{ border:1px solid #444; padding:8px; text-align:right; }}
+            th {{ background:#1f1f1f; text-align:center; }}
+            tr:nth-child(even){{background:#1a1a1a;}}
+            tr:nth-child(odd){{background:#222;}}
+            td:first-child {{ text-align:left; font-weight:bold; }}
+            img {{ max-width:100%; margin:20px 0; border:1px solid #444;
+                   border-radius:8px; box-shadow:0 0 8px rgba(255,255,255,0.1); }}
         </style>
     </head>
-
     <body>
         <h1>Budget Summary Report</h1>
-
         <h2>Income & Totals</h2>
         {month_table}
 
         <h2>Charts</h2>
-        <h3>Line Graph</h3><img src="data:image/png;base64,{charts['line']}" />
-        <h3>Stacked Bar Chart</h3><img src="data:image/png;base64,{charts['bar']}" />
-        <h3>Waterfall Chart</h3><img src="data:image/png;base64,{charts['waterfall']}" />
+        <h3>Line Graph</h3><img src="data:image/png;base64,{charts['line']}">
+        <h3>Stacked Bar Chart</h3><img src="data:image/png;base64,{charts['bar']}">
+        <h3>Waterfall Chart</h3><img src="data:image/png;base64,{charts['waterfall']}">
 
         <h1>Category Summary (Actuals by Month)</h1>
         {category_summary_html}
 
-        <!-- Activate DataTables for ONLY the first summary table -->
-        <script>
-        $(document).ready(function() {{
-            var table = $('.dt-summary-table').DataTable({{
-                pageLength: 25,
-                lengthMenu: [[10, 25, 50, -1],[10, 25, 50, "All"]],
-                order: [],
-                orderMulti: true,
-                searching: true,
-                paging: true,
-                info: true
-            }});
-
-            // Add search boxes in footer
-            $('.dt-summary-table tfoot th').each(function() {{
-                $(this).html('<input type="text" placeholder="Search" style="width:100%;font-size:11px;" />');
-            }});
-
-            table.columns().every(function() {{
-                var that = this;
-                $('input', this.footer()).on('keyup change clear', function() {{
-                    if (that.search() !== this.value) {{
-                        that.search(this.value).draw();
-                    }}
-                }});
-            }});
-        }});
-        </script>
+        {get_datatables_init_script('.dt-summary-table')}
     </body>
     </html>
     """
 
     with open(html_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
-
+        f.write(html)
     print(f"Saved report with DataTable on summary table: {html_path}")
 
+# ----------------- Outputs -----------------
 
-
-# ---------- Main wrapper ----------
 def write_outputs(grouped, income, output_dir):
-    """Main entry: orchestrates CSV, plots, and HTML report generation."""
+    """Orchestrates CSV, plots, and HTML report generation."""
     os.makedirs(output_dir, exist_ok=True)
 
     csv_path = os.path.join(output_dir, "summary_monthly_budget.csv")
@@ -387,20 +296,15 @@ def write_outputs(grouped, income, output_dir):
     category_html = generate_category_sections(grouped)
     write_html_report(output_dir, month_totals, charts, category_html)
 
+# ----------------- Main -----------------
 
 def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-d", "--data-dir", default="../data/Monthly_budget_file", help="Directory with input CSV files"
-    )
-    parser.add_argument(
-        "-o", "--output-dir", default="../outputs", help="Directory to save outputs"
-    )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable verbose logging output."
-    )
+    parser.add_argument("-d", "--data-dir", default="../data/Monthly_budget_file", help="Directory with input CSV files")
+    parser.add_argument("-o", "--output-dir", default="../outputs", help="Directory to save outputs")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging output.")
     args = parser.parse_args()
 
     if args.verbose:
@@ -413,11 +317,11 @@ def main():
     df = read_all_months(args.data_dir)
     if df.empty:
         logging.warning("Nothing to summarize.")
+        print("No CSV data found. Exiting.")
         return
 
     grouped, income = clean_and_aggregate(df)
     write_outputs(grouped, income, args.output_dir)
-
 
 if __name__ == "__main__":
     main()
