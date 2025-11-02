@@ -50,6 +50,18 @@ def fig_to_base64(fig):
     buf.seek(0)
     return base64.b64encode(buf.read()).decode("utf-8")
 
+def sparkline_base64(values):
+    """Return base64 sparkline PNG for a list of numbers."""
+    fig, ax = plt.subplots(figsize=(1.8, 0.5))  # tiny sparkline
+    ax.plot(values, linewidth=1)
+    ax.axis('off')
+
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=200, bbox_inches="tight", pad_inches=0)
+    plt.close(fig)
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode("utf-8")
+
 # ----------------- CSV Reading & Aggregation -----------------
 
 def read_all_months(data_dir):
@@ -187,58 +199,96 @@ def generate_summary_charts(month_totals):
 
 # ----------------- Category Sections -----------------
 
-def generate_category_sections(grouped, scale_factor=5 / 150000):
-    """Generate HTML sections per category with charts."""
+def generate_category_sections(grouped):
+    """Generate collapsible category sections with full-width interactive Plotly charts."""
+    import plotly.express as px
+
     cat_totals = grouped.groupby("Category")["Actual_total"].sum().sort_values(ascending=False)
     sorted_categories = cat_totals.index.tolist()
     sections = []
 
-    plt.style.use("dark_background")
-    fig_face, ax_face, grid_color = "#121212", "#1a1a1a", "#555"
-
     for cat in sorted_categories:
-        cat_df = grouped[grouped["Category"] == cat][["month", "Actual_total"]].sort_values("month")
+        cat_df = (
+            grouped[grouped["Category"] == cat]
+            .sort_values("month")[["month", "Actual_total"]]
+        )
+        total = cat_df["Actual_total"].sum()
+
+        # Pivot table for HTML view
         cat_pivot = cat_df.pivot_table(index=None, columns="month", values="Actual_total", aggfunc="sum").fillna(0)
         cat_pivot.columns = [str(c) for c in cat_pivot.columns]
+        cat_table = cat_pivot.to_html(index=False, border=0, justify='center')
 
-        num_months = len(cat_df["month"].unique())
-        max_val = cat_df["Actual_total"].max()
-        fig_width = max(6, num_months * 0.8)
-        fig_height = max(3, max_val * scale_factor)
+        # Interactive Plotly chart per category
+        cat_df["month_dt"] = pd.to_datetime(cat_df["month"])
+        fig = px.line(
+            cat_df,
+            x="month_dt",
+            y="Actual_total",
+            title=f"{cat} - Actuals by Month",
+            markers=True,
+            labels={"month_dt": "Month", "Actual_total": "Amount (SEK)"}
+        )
 
-        fig, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor=fig_face)
-        ax.set_facecolor(ax_face)
-        ax.plot(cat_df["month"], cat_df["Actual_total"], marker="o", color="#64b5f6")
-        ax.set_title(f"{cat} - Actuals by Month", color="white")
-        ax.set_xlabel("Month", color="white")
-        ax.set_ylabel("Amount [SEK]", color="white")
-        ax.grid(True, linestyle="--", alpha=0.3, color=grid_color)
-        ax.tick_params(colors="white", axis="y", rotation=0)
-        for spine in ax.spines.values():
-            spine.set_color(grid_color)
-        plt.tight_layout()
-        cat_b64 = fig_to_base64(fig)
-        plt.close(fig)
+        max_val = cat_df["Actual_total"].max() * 1.05
+        fig.update_traces(line=dict(color="#f67a64"))  # set line color here
+        fig.update_layout(
+            paper_bgcolor="#121212",
+            plot_bgcolor="#121212",
+            font_color="white",
+            margin=dict(l=20, r=20, t=40, b=20),
+            height=350,
+            yaxis=dict(range=[0, max_val])
+        )
+
+        fig_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
 
         sections.append(
             f"""
-            <h2>{cat}</h2>
-            {cat_pivot.to_html(index=False, border=0, justify='center')}
-            <img src="data:image/png;base64,{cat_b64}" />
-        """
+            <details style='margin:15px 0;'>
+                <summary style='cursor:pointer; font-size:1.1em; font-weight:bold;'>
+                    {cat} — {total:,.0f} SEK
+                </summary>
+                <div style='margin-top:10px; padding-left:10px;'>
+                    {cat_table}
+                    {fig_html}
+                </div>
+            </details>
+            """
         )
 
     return "\n".join(sections)
 
+
 # ----------------- HTML Report -----------------
 
 def write_html_report(output_dir, month_totals, charts, category_summary_html):
-    """Render dark HTML report with DataTables on summary table."""
+    """Render dark HTML report with DataTables and interactive Plotly chart."""
+    import plotly.express as px
+
     html_path = os.path.join(output_dir, "summary_monthly_budget.html")
 
     # Convert month_totals table → DataTable
     month_table = month_totals.to_html(index=False, border=0, justify='center', classes="dt-summary-table")
     month_table = add_tfoot_to_html_table(month_table)
+
+    # Build interactive Plotly expenses trend
+    df_total = month_totals.copy()
+    df_total["month_dt"] = pd.to_datetime(df_total["month"])
+    fig = px.line(
+        df_total,
+        x="month_dt",
+        y="Actual_total",
+        title="Interactive Monthly Expense Trend",
+        markers=True,
+        labels={"month_dt": "Month", "Actual_total": "Expenses (SEK)"}
+    )
+    fig.update_layout(
+        paper_bgcolor="#121212",
+        plot_bgcolor="#121212",
+        font_color="white"
+    )
+    plotly_html = fig.to_html(full_html=False, include_plotlyjs="cdn")
 
     html = f"""
     <html>
@@ -258,14 +308,28 @@ def write_html_report(output_dir, month_totals, charts, category_summary_html):
             td:first-child {{ text-align:left; font-weight:bold; }}
             img {{ max-width:100%; margin:20px 0; border:1px solid #444;
                    border-radius:8px; box-shadow:0 0 8px rgba(255,255,255,0.1); }}
+            summary {{
+                cursor: pointer;
+                padding: 6px;
+                background-color:#1f1f1f;
+                border-radius: 4px;
+            }}
+            details {{
+                margin-bottom: 14px;
+                padding: 4px;
+            }}
         </style>
     </head>
     <body>
         <h1>Budget Summary Report</h1>
+
         <h2>Income & Totals</h2>
         {month_table}
 
-        <h2>Charts</h2>
+        <h2>Interactive Trend</h2>
+        <div>{plotly_html}</div>
+
+        <h2>Static Summary Charts</h2>
         <h3>Line Graph</h3><img src="data:image/png;base64,{charts['line']}">
         <h3>Stacked Bar Chart</h3><img src="data:image/png;base64,{charts['bar']}">
         <h3>Waterfall Chart</h3><img src="data:image/png;base64,{charts['waterfall']}">
@@ -280,7 +344,9 @@ def write_html_report(output_dir, month_totals, charts, category_summary_html):
 
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html)
+
     print(f"Saved report with DataTable on summary table: {html_path}")
+
 
 # ----------------- Outputs -----------------
 
