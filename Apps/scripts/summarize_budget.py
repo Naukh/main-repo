@@ -11,6 +11,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import plotly.express as px
 import logging
 import chardet
 import base64
@@ -22,6 +23,9 @@ from util.util import (
     get_datatables_init_script,
     add_tfoot_to_html_table
 )
+
+MOVING_AVERAGE_MONTHS = 12
+LINE_COLOR = "#64b5f6"
 
 # ----------------- Utility functions -----------------
 
@@ -200,38 +204,60 @@ def generate_summary_charts(month_totals):
 # ----------------- Category Sections -----------------
 
 def generate_category_sections(grouped):
-    """Generate collapsible category sections with full-width interactive Plotly charts."""
-    import plotly.express as px
+    """
+    Generate collapsible category sections with:
+    - Interactive Plotly chart per category
+    - Y-axis starting at zero
+    - Header showing total + moving average + trend indicator
+    - Custom line color
+    """
 
     cat_totals = grouped.groupby("Category")["Actual_total"].sum().sort_values(ascending=False)
     sorted_categories = cat_totals.index.tolist()
     sections = []
 
     for cat in sorted_categories:
-        cat_df = (
-            grouped[grouped["Category"] == cat]
-            .sort_values("month")[["month", "Actual_total"]]
-        )
+        cat_df = grouped[grouped["Category"] == cat][["month", "Actual_total"]].copy()
+        cat_df = cat_df.sort_values("month")
+        cat_df["month_dt"] = pd.to_datetime(cat_df["month"])
+
+        # Compute moving average
+        cat_df["MA"] = cat_df["Actual_total"].rolling(MOVING_AVERAGE_MONTHS, min_periods=1).mean()
+
         total = cat_df["Actual_total"].sum()
+        latest_val = cat_df["Actual_total"].iloc[-1]
+        latest_ma = cat_df["MA"].iloc[-1]
+
+        # Trend indicator
+        if latest_val > latest_ma:
+            trend = "▲"
+            trend_color = "green"
+        elif latest_val < latest_ma:
+            trend = "▼"
+            trend_color = "red"
+        else:
+            trend = "→"
+            trend_color = "gray"
+
+        pct_diff = (latest_val - latest_ma) / latest_ma * 100 if latest_ma != 0 else 0
+        trend_text = f"<span style='color:{trend_color}'>{trend}</span> ({pct_diff:+.1f}%)"
 
         # Pivot table for HTML view
         cat_pivot = cat_df.pivot_table(index=None, columns="month", values="Actual_total", aggfunc="sum").fillna(0)
         cat_pivot.columns = [str(c) for c in cat_pivot.columns]
         cat_table = cat_pivot.to_html(index=False, border=0, justify='center')
 
-        # Interactive Plotly chart per category
-        cat_df["month_dt"] = pd.to_datetime(cat_df["month"])
+        # Interactive Plotly chart
         fig = px.line(
             cat_df,
             x="month_dt",
             y="Actual_total",
             title=f"{cat} - Actuals by Month",
             markers=True,
-            labels={"month_dt": "Month", "Actual_total": "Amount (SEK)"}
+            labels={"month_dt": "Month", "Actual_total": "Amount (SEK)"},
         )
-
         max_val = cat_df["Actual_total"].max() * 1.05
-        fig.update_traces(line=dict(color="#f67a64"))  # set line color here
+        fig.update_traces(line=dict(color=LINE_COLOR))
         fig.update_layout(
             paper_bgcolor="#121212",
             plot_bgcolor="#121212",
@@ -240,14 +266,14 @@ def generate_category_sections(grouped):
             height=350,
             yaxis=dict(range=[0, max_val])
         )
+        fig_html = fig.to_html(full_html=False, include_plotlyjs="cdn")
 
-        fig_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
-
+        # Build collapsible section
         sections.append(
             f"""
             <details style='margin:15px 0;'>
                 <summary style='cursor:pointer; font-size:1.1em; font-weight:bold;'>
-                    {cat} — {total:,.0f} SEK
+                    {cat} — TOTAL {total:,.0f} SEK — {MOVING_AVERAGE_MONTHS} Months Avg: {latest_ma:,.0f} SEK {trend_text}
                 </summary>
                 <div style='margin-top:10px; padding-left:10px;'>
                     {cat_table}
@@ -283,6 +309,7 @@ def write_html_report(output_dir, month_totals, charts, category_summary_html):
         markers=True,
         labels={"month_dt": "Month", "Actual_total": "Expenses (SEK)"}
     )
+    fig.update_traces(line=dict(color=LINE_COLOR))
     fig.update_layout(
         paper_bgcolor="#121212",
         plot_bgcolor="#121212",
