@@ -74,3 +74,73 @@ Once you’re comfortable with this CSV-based system:
 Option 3 → turn this into an interactive GUI or dashboard with [Streamli](https://streamlit.io/)
 Option 4 → build a web app (Flask/Django or React) for access from phone and browser.
 Option 2 → migrate to SQLite instead of CSV for stronger data integrity and simpler queries.
+
+## Budget using DB SQlite
+🧩 Phase 1 — Foundation: Database setup and importing CSVs
+
+Goal: create a SQLite database (budget.db) and import all your monthly CSVs into it.
+
+Steps:
+
+Design a simple schema (entries table):
+
+This will have all columns you already use in CSVs (EntryType, Date, Category, etc.).
+
+We’ll store both income and expenses together in this one table.
+
+Write an importer script (import_to_db.py):
+
+It will scan your Monthly_budget_files/ folder.
+
+Read each *.csv.
+
+Insert or update the database accordingly (so it’s idempotent — safe to re-run).
+
+Verify import: Query the DB for sample data.
+
+📊 Phase 2 — Data exploration & queries
+
+Goal: replace “summary” logic (which was previously done by summarize_budget()) with SQL queries and pandas.read_sql_query.
+
+We’ll create reusable functions like:
+
+get_monthly_summary(conn)
+
+get_category_summary(conn)
+
+get_income_expense_balance(conn)
+
+Then we can pipe those into your chart/report generation pipeline later.
+
+🧠 Phase 3 — Reporting layer (HTML, plots)
+
+Goal: recreate your existing HTML report purely from SQL data.
+You’ll be able to:
+
+generate tables (via SQL aggregation)
+
+generate charts (Plotly/matplotlib using pandas from SQL queries)
+
+reuse the write_html_report() skeleton
+
+This keeps the “presentation” layer same, but now fully database-driven.
+
+⚙️ Phase 4 — Optional features (fun extras)
+
+Once the basics are solid, you can extend easily:
+
+Add a budgets table for planned vs actual comparisons.
+
+Add a CLI or simple web UI to edit/add entries.
+
+Run complex queries (e.g., rolling averages, yearly comparisons).
+
+🪄 Optional extensions (future)
+
+If we later want a bit more structure, we can normalize:
+
+categories table → id, name
+
+subcategories table → id, category_id, name
+
+accounts table → id, name

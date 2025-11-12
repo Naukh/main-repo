@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """
-Summarize budgets and expenses across months.
+Summarize budgets and expenses across months from SQLite DB.
 Usage:
-  python summarize.py -d ../data -o ../outputs
+  python summarize_db.py -db ../data/budget.db -o ../outputs
 """
 
 import os
-import glob
+import sqlite3
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import plotly.express as px
 import logging
-import chardet
 import base64
 from io import BytesIO
 
@@ -24,18 +23,12 @@ from util.util import (
     add_tfoot_to_html_table
 )
 
-OUTPUT_FILENAME = f"summary_monthly_budget"
+OUTPUT_FILENAME = f"summary_monthly_budget_db"
+
 MOVING_AVERAGE_MONTHS = 12
 LINE_COLOR = "#64b5f6"
 
-# ----------------- Utility functions -----------------
-
-def detect_encoding(file_path):
-    """Detect file encoding using chardet."""
-    with open(file_path, "rb") as f:
-        raw = f.read()
-    result = chardet.detect(raw)
-    return result["encoding"]
+# ----------------- Utility -----------------
 
 def safe_save(save_func, path, *args, **kwargs):
     """Attempt to save a file, retry if PermissionError occurs."""
@@ -55,65 +48,29 @@ def fig_to_base64(fig):
     buf.seek(0)
     return base64.b64encode(buf.read()).decode("utf-8")
 
-def sparkline_base64(values):
-    """Return base64 sparkline PNG for a list of numbers."""
-    fig, ax = plt.subplots(figsize=(1.8, 0.5))  # tiny sparkline
-    ax.plot(values, linewidth=1)
-    ax.axis('off')
+# ----------------- DB Read & Aggregation -----------------
 
-    buf = BytesIO()
-    fig.savefig(buf, format="png", dpi=200, bbox_inches="tight", pad_inches=0)
-    plt.close(fig)
-    buf.seek(0)
-    return base64.b64encode(buf.read()).decode("utf-8")
-
-# ----------------- CSV Reading & Aggregation -----------------
-
-def read_all_months(data_dir):
-    """Read all CSVs from data_dir into a single DataFrame."""
-    files = sorted(glob.glob(os.path.join(data_dir, "*.csv")))
-    if not files:
-        logging.warning("No month CSV files found in %s", data_dir)
-        return pd.DataFrame(
-            columns=[
-                "EntryType", "Date", "Category", "Subcategory",
-                "Description", "Budgeted", "Actual", "Income",
-                "Account", "Notes", "month"
-            ]
-        )
-    dfs = []
-    for f in files:
-        month = os.path.splitext(os.path.basename(f))[0]
-        try:
-            encoding = detect_encoding(f)
-            df = pd.read_csv(f, encoding=encoding)
-        except Exception as e:
-            logging.error("Failed to read %s: %s", f, e)
-            continue
-        df["month"] = month
-        dfs.append(df)
-    if not dfs:
-        return pd.DataFrame()
-    return pd.concat(dfs, ignore_index=True)
+def read_db(db_path):
+    """Read all entries from SQLite database."""
+    conn = sqlite3.connect(db_path)
+    df = pd.read_sql_query("SELECT * FROM entries", conn)
+    conn.close()
+    return df
 
 def clean_and_aggregate(df):
     """Convert numeric columns and aggregate budgets and income."""
-    df["Budgeted"] = pd.to_numeric(df.get("Budgeted", 0), errors="coerce").fillna(0.0)
-    df["Actual"] = pd.to_numeric(df.get("Actual", 0), errors="coerce").fillna(0.0)
-    df["month"] = pd.to_datetime(df["month"], format="%Y-%m", errors="coerce")
+    df["budgeted"] = pd.to_numeric(df.get("budgeted", 0), errors="coerce").fillna(0.0)
+    df["actual"] = pd.to_numeric(df.get("actual", 0), errors="coerce").fillna(0.0)
 
-    df_budget = df[df["EntryType"] == "budget"]
-    df_income = df[df["EntryType"] == "income"]
+    df["month_dt"] = pd.to_datetime(df["month"], format="%Y-%m", errors="coerce")
+    df_budget = df[df["entry_type"] == "budget"]
+    df_income = df[df["entry_type"] == "income"]
 
-    grouped = (
-        df_budget.groupby(["month", "Category"])
-        .agg(Actual_total=("Actual", "sum"))
-        .reset_index()
-    )
+    grouped = df_budget.groupby(["month", "category"]).agg(Actual_total=("actual", "sum")).reset_index()
+    income = df_income.groupby("month").agg(Income_total=("actual", "sum")).reset_index()
 
-    income = (
-        df_income.groupby("month").agg(Income_total=("Actual", "sum")).reset_index()
-    )
+    grouped["month"] = pd.to_datetime(grouped["month"])
+    income["month"] = pd.to_datetime(income["month"])
 
     grouped["month"] = grouped["month"].dt.strftime("%Y-%m")
     income["month"] = income["month"].dt.strftime("%Y-%m")
@@ -205,24 +162,17 @@ def generate_summary_charts(month_totals):
 # ----------------- Category Sections -----------------
 
 def generate_category_sections(grouped):
-    """
-    Generate collapsible category sections with:
-    - Interactive Plotly chart per category
-    - Y-axis starting at zero
-    - Header showing total + moving average + trend indicator
-    - Custom line color
-    """
-
-    cat_totals = grouped.groupby("Category")["Actual_total"].sum().sort_values(ascending=False)
+    """Generate collapsible sections per category with trend arrow."""
+    cat_totals = grouped.groupby("category")["Actual_total"].sum().sort_values(ascending=False)
     sorted_categories = cat_totals.index.tolist()
     sections = []
 
     for cat in sorted_categories:
-        cat_df = grouped[grouped["Category"] == cat][["month", "Actual_total"]].copy()
+        cat_df = grouped[grouped["category"] == cat][["month", "Actual_total"]].copy()
         cat_df = cat_df.sort_values("month")
         cat_df["month_dt"] = pd.to_datetime(cat_df["month"])
 
-        # Compute moving average
+        # Moving average
         cat_df["MA"] = cat_df["Actual_total"].rolling(MOVING_AVERAGE_MONTHS, min_periods=1).mean()
 
         total = cat_df["Actual_total"].sum()
@@ -248,14 +198,14 @@ def generate_category_sections(grouped):
         cat_pivot.columns = [str(c) for c in cat_pivot.columns]
         cat_table = cat_pivot.to_html(index=False, border=0, justify='center')
 
-        # Interactive Plotly chart
+        # Plotly interactive chart
         fig = px.line(
             cat_df,
             x="month_dt",
             y="Actual_total",
             title=f"{cat} - Actuals by Month",
             markers=True,
-            labels={"month_dt": "Month", "Actual_total": "Amount (SEK)"},
+            labels={"month_dt": "Month", "Actual_total": "Amount (SEK)"}
         )
         max_val = cat_df["Actual_total"].max() * 1.05
         fig.update_traces(line=dict(color=LINE_COLOR))
@@ -269,53 +219,37 @@ def generate_category_sections(grouped):
         )
         fig_html = fig.to_html(full_html=False, include_plotlyjs="cdn")
 
-        # Build collapsible section
-        sections.append(
-            f"""
-            <details style='margin:15px 0;'>
-                <summary style='cursor:pointer; font-size:1.1em; font-weight:bold;'>
-                    {cat} — TOTAL {total:,.0f} SEK — {MOVING_AVERAGE_MONTHS} Months Avg: {latest_ma:,.0f} SEK {trend_text}
-                </summary>
-                <div style='margin-top:10px; padding-left:10px;'>
-                    {cat_table}
-                    {fig_html}
-                </div>
-            </details>
-            """
-        )
+        # Collapsible section
+        sections.append(f"""
+        <details style='margin:15px 0;'>
+            <summary style='cursor:pointer; font-size:1.1em; font-weight:bold;'>
+                {cat} — TOTAL {total:,.0f} SEK — {MOVING_AVERAGE_MONTHS} Months Avg: {latest_ma:,.0f} SEK {trend_text}
+            </summary>
+            <div style='margin-top:10px; padding-left:10px;'>
+                {cat_table}
+                {fig_html}
+            </div>
+        </details>
+        """)
 
     return "\n".join(sections)
-
 
 # ----------------- HTML Report -----------------
 
 def write_html_report(output_dir, month_totals, charts, category_summary_html):
-    """Render dark HTML report with DataTables and interactive Plotly chart."""
-    import plotly.express as px
-
     html_path = os.path.join(output_dir, f"{OUTPUT_FILENAME}.html")
 
-    # Convert month_totals table → DataTable
+    # Convert month_totals → DataTable
     month_table = month_totals.to_html(index=False, border=0, justify='center', classes="dt-summary-table")
     month_table = add_tfoot_to_html_table(month_table)
 
-    # Build interactive Plotly expenses trend
+    # Interactive plotly chart for expenses
     df_total = month_totals.copy()
     df_total["month_dt"] = pd.to_datetime(df_total["month"])
-    fig = px.line(
-        df_total,
-        x="month_dt",
-        y="Actual_total",
-        title="Interactive Monthly Expense Trend",
-        markers=True,
-        labels={"month_dt": "Month", "Actual_total": "Expenses (SEK)"}
-    )
+    fig = px.line(df_total, x="month_dt", y="Actual_total", markers=True,
+                  labels={"month_dt": "Month", "Actual_total": "Expenses (SEK)"})
     fig.update_traces(line=dict(color=LINE_COLOR))
-    fig.update_layout(
-        paper_bgcolor="#121212",
-        plot_bgcolor="#121212",
-        font_color="white"
-    )
+    fig.update_layout(paper_bgcolor="#121212", plot_bgcolor="#121212", font_color="white")
     plotly_html = fig.to_html(full_html=False, include_plotlyjs="cdn")
 
     html = f"""
@@ -324,9 +258,7 @@ def write_html_report(output_dir, month_totals, charts, category_summary_html):
         <title>Budget Summary Report</title>
         {get_datatables_dependencies()}
         <style>
-            body {{
-                background-color:#121212;color:#fff;font-family:Arial;margin:40px;
-            }}
+            body {{ background-color:#121212;color:#fff;font-family:Arial;margin:40px; }}
             h1,h2,h3 {{ color:#80cbc4; }}
             table {{ border-collapse:collapse; width:100%; margin:20px 0; }}
             table,th,td {{ border:1px solid #444; padding:8px; text-align:right; }}
@@ -334,18 +266,8 @@ def write_html_report(output_dir, month_totals, charts, category_summary_html):
             tr:nth-child(even){{background:#1a1a1a;}}
             tr:nth-child(odd){{background:#222;}}
             td:first-child {{ text-align:left; font-weight:bold; }}
-            img {{ max-width:100%; margin:20px 0; border:1px solid #444;
-                   border-radius:8px; box-shadow:0 0 8px rgba(255,255,255,0.1); }}
-            summary {{
-                cursor: pointer;
-                padding: 6px;
-                background-color:#1f1f1f;
-                border-radius: 4px;
-            }}
-            details {{
-                margin-bottom: 14px;
-                padding: 4px;
-            }}
+            summary {{ cursor: pointer; padding: 6px; background-color:#1f1f1f; border-radius: 4px; }}
+            details {{ margin-bottom: 14px; padding: 4px; }}
         </style>
     </head>
     <body>
@@ -372,14 +294,11 @@ def write_html_report(output_dir, month_totals, charts, category_summary_html):
 
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html)
+    print(f"Saved HTML report: {html_path}")
 
-    print(f"Saved report with DataTable on summary table: {html_path}")
-
-
-# ----------------- Outputs -----------------
+# ----------------- Orchestrator -----------------
 
 def write_outputs(grouped, income, output_dir):
-    """Orchestrates CSV, plots, and HTML report generation."""
     os.makedirs(output_dir, exist_ok=True)
 
     csv_path = os.path.join(output_dir, f"{OUTPUT_FILENAME}.csv")
@@ -394,24 +313,20 @@ def write_outputs(grouped, income, output_dir):
 
 def main():
     import argparse
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--data-dir", default="../data/Monthly_budget_file", help="Directory with input CSV files")
+    parser.add_argument("-db", "--db-path", default="../data/budget.db", help="SQLite DB path")
     parser.add_argument("-o", "--output-dir", default="../outputs", help="Directory to save outputs")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging output.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
     args = parser.parse_args()
 
     if args.verbose:
         logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
-        logging.getLogger().setLevel(logging.INFO)
-        logging.info("Verbose mode enabled.")
     else:
-        logging.disable(logging.CRITICAL)  # silence all logging
+        logging.disable(logging.CRITICAL)
 
-    df = read_all_months(args.data_dir)
+    df = read_db(args.db_path)
     if df.empty:
-        logging.warning("Nothing to summarize.")
-        print("No CSV data found. Exiting.")
+        print("No data found in DB. Exiting.")
         return
 
     grouped, income = clean_and_aggregate(df)
