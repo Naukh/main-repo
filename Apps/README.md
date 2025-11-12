@@ -135,7 +135,7 @@ Add a CLI or simple web UI to edit/add entries.
 
 Run complex queries (e.g., rolling averages, yearly comparisons).
 
-🪄 Optional extensions (future)
+🪄 Optional extensions to database template (future)
 
 If we later want a bit more structure, we can normalize:
 
