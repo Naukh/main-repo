@@ -1,8 +1,9 @@
 import streamlit as st
-from core.db import ensure_db_exists, seed_sample_data, fetch_entries
-
+import pandas as pd
 from core.db import (
     fetch_entries,
+    seed_sample_data,
+    ensure_db_exists,
     fetch_distinct_categories_subcategories,
     bulk_update_rows,
     bulk_delete,
