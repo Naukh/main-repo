@@ -10,12 +10,8 @@ from core.db import (
 # -------------------------------
 # Initialize database
 # -------------------------------
-# 1️⃣ Ensure folder and table exist
-is_new_db = ensure_db_exists()
 
-# 2️⃣ Only seed if DB is empty
-if is_new_db or fetch_entries().empty:
-    seed_sample_data()
+ensure_db_exists()  # just make sure folder & table exist
 
 # -------------------------------
 # Streamlit page setup
