@@ -2,6 +2,8 @@ import sqlite3
 import pandas as pd
 from .config import DB_PATH, TABLE_NAME
 import os
+from datetime import date
+
 
 def get_conn():
     return sqlite3.connect(DB_PATH)
