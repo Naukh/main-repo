@@ -2,18 +2,22 @@ import sqlite3
 import pandas as pd
 from .config import DB_PATH, TABLE_NAME
 import os
-from datetime import date
+from datetime import date, timedelta
 import random
 
+# -------------------------------
+# Database helpers
+# -------------------------------
 
 def get_conn():
     return sqlite3.connect(DB_PATH)
 
 def ensure_db_exists():
-    """Create database and table if they don't exist."""
+    """Create database folder, DB file, and table if missing."""
     folder = os.path.dirname(DB_PATH)
     if not os.path.exists(folder):
-        os.makedirs(folder)
+        os.makedirs(folder, exist_ok=True)
+
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute(f"""
@@ -34,19 +38,20 @@ def ensure_db_exists():
     conn.commit()
     conn.close()
 
+# -------------------------------
+# Seed sample data
+# -------------------------------
+
 def seed_sample_data():
-    """
-    Seed the database with multiple months of sample data.
-    """
+    """Seed database with multi-month sample entries."""
     ensure_db_exists()
     conn = get_conn()
     cur = conn.cursor()
 
-    # Clear existing data (optional, comment out if not desired)
+    # Clear existing data
     cur.execute(f"DELETE FROM {TABLE_NAME}")
     conn.commit()
 
-    # Sample categories and subcategories
     categories = {
         "Food": ["Groceries", "Dining Out"],
         "Transport": ["Fuel", "Taxi", "Bus"],
@@ -55,19 +60,19 @@ def seed_sample_data():
         "Utilities": ["Electricity", "Internet"],
     }
 
-    # Generate data for the last 6 months
     today = date.today()
+
     for month_offset in range(0, 6):
+        # Calculate month start
         month_date = (today.replace(day=1) - timedelta(days=month_offset*30))
         month_str = f"{month_date.year}-{month_date.month:02d}"
 
         for cat, subcats in categories.items():
             for subcat in subcats:
-                # Randomly decide whether to insert an entry
                 if random.random() > 0.5:
                     entry_type = "income" if cat == "Income" else "budget"
                     entry_date = month_date.replace(day=random.randint(1, 28))
-                    description = f"Sample {subcat} expense" if entry_type == "budget" else f"Sample {subcat} income"
+                    description = f"Sample {subcat} {'income' if entry_type=='income' else 'expense'}"
                     budgeted = round(random.uniform(50, 500), 2) if entry_type == "budget" else 0
                     actual = round(random.uniform(50, 500), 2) if entry_type == "budget" else budgeted
                     account = random.choice(["Cash", "Bank", "Card"])
@@ -79,22 +84,16 @@ def seed_sample_data():
                         (entry_type, date, month, category, subcategory, description, budgeted, actual, account, notes)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (
-                            entry_type,
-                            entry_date.isoformat(),
-                            month_str,
-                            cat,
-                            subcat,
-                            description,
-                            budgeted,
-                            actual,
-                            account,
-                            notes
-                        )
+                        (entry_type, entry_date.isoformat(), month_str, cat, subcat, description, budgeted, actual, account, notes)
                     )
+
     conn.commit()
     conn.close()
     print("Seeded sample data for multiple months.")
+
+# -------------------------------
+# Fetch entries
+# -------------------------------
 
 def fetch_entries(month=None, category=None, subcategory=None, entry_type=None):
     conn = get_conn()
@@ -121,15 +120,17 @@ def fetch_entries(month=None, category=None, subcategory=None, entry_type=None):
 def fetch_distinct_categories_subcategories():
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute(f"SELECT DISTINCT category FROM {TABLE_NAME} WHERE category IS NOT NULL")
     categories = [r[0] for r in cur.fetchall()]
 
     cur.execute(f"SELECT DISTINCT category, subcategory FROM {TABLE_NAME} WHERE subcategory IS NOT NULL")
     cat_sub = [(c, sc) for c, sc in cur.fetchall()]
-
     conn.close()
     return categories, cat_sub
+
+# -------------------------------
+# Insert / update / delete
+# -------------------------------
 
 def insert_entry(entry):
     conn = get_conn()
@@ -157,7 +158,6 @@ def bulk_update_rows(df):
     conn = get_conn()
     cur = conn.cursor()
     updated = 0
-
     for _, r in df.iterrows():
         cur.execute(f"""
             UPDATE {TABLE_NAME}
@@ -169,7 +169,6 @@ def bulk_update_rows(df):
             r["description"], r["budgeted"], r["actual"], r["account"], r["notes"], r["id"]
         ))
         updated += cur.rowcount
-
     conn.commit()
     conn.close()
     return updated

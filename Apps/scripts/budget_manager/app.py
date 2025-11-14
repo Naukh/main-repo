@@ -6,14 +6,18 @@ from core.db import (
     fetch_entries,
 )
 
-
-# Ensure DB & table exist first
+# -------------------------------
+# Initialize database
+# -------------------------------
 ensure_db_exists()
 
-# Optionally seed sample data only if database is empty
+# Seed sample data only if the database is empty
 if fetch_entries().empty:
     seed_sample_data()
 
+# -------------------------------
+# Streamlit page setup
+# -------------------------------
 st.set_page_config(page_title="Budget Manager", layout="wide")
 st.title("💰 Budget Manager")
 
@@ -24,4 +28,7 @@ Use the sidebar or top navigation to access:
 - **Summary**
 """)
 
+# -------------------------------
+# Admin controls
+# -------------------------------
 quit_button()
