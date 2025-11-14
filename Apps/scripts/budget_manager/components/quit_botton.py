@@ -1,12 +1,10 @@
 import os
-import sys
 import signal
 import streamlit as st
 
-ADMIN_PASSWORD = "584483"    # <-- change this
+ADMIN_PASSWORD = "584483" 
 
 def quit_button():
-
     st.markdown("---")
     st.subheader("🔥 Danger Zone (Admin Only)")
 
@@ -30,7 +28,6 @@ def quit_button():
     # Password check
     # ------------------------------------
     pw = st.text_input("Enter admin password:", type="password")
-
     if pw != ADMIN_PASSWORD:
         st.info("Enter password to unlock admin controls.")
         return
@@ -40,18 +37,11 @@ def quit_button():
     if "confirm_quit" not in st.session_state:
         st.session_state.confirm_quit = False
 
-    if "confirm_restart" not in st.session_state:
-        st.session_state.confirm_restart = False
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("Quit App"):
-            st.session_state.confirm_quit = True
-
-    with col2:
-        if st.button("Restart App"):
-            st.session_state.confirm_restart = True
+    # ------------------------------------
+    # Quit button
+    # ------------------------------------
+    if st.button("Quit App"):
+        st.session_state.confirm_quit = True
 
     # Quit confirmation
     if st.session_state.confirm_quit:
@@ -66,17 +56,3 @@ def quit_button():
         with q2:
             if st.button("Cancel Quit"):
                 st.session_state.confirm_quit = False
-
-    # Restart confirmation
-    if st.session_state.confirm_restart:
-        st.warning("🔄 Restart the Streamlit server?")
-        r1, r2 = st.columns(2)
-
-        with r1:
-            if st.button("Yes, Restart"):
-                st.warning("Restarting...")
-                os.execv(sys.executable, ["python"] + sys.argv)
-
-        with r2:
-            if st.button("Cancel Restart"):
-                st.session_state.confirm_restart = False
