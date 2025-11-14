@@ -16,7 +16,7 @@ def run():
     st.title("📋 View & Edit Entries")
 
     # -------------------------------------------
-    # Filters
+    # Fetch all entries
     # -------------------------------------------
     df_all = fetch_entries()
 
@@ -24,6 +24,9 @@ def run():
         st.info("No entries in database.")
         return
 
+    # -------------------------------------------
+    # Filter options
+    # -------------------------------------------
     months = sorted(df_all["month"].dropna().unique(), reverse=True)
     categories, cat_subpairs = fetch_distinct_categories_subcategories()
     categories = sorted(categories)
@@ -33,19 +36,20 @@ def run():
 
     with col1:
         month_filter = st.selectbox(
-            "Filter by month",
-            options=["-- all --"] + months
+            "Filter by month (optional)",
+            options=["-- all --"] + months,
+            index=0  # default to "-- all --"
         )
 
     with col2:
         category_filter = st.selectbox(
-            "Filter by category",
+            "Filter by category (optional)",
             options=["-- all --"] + categories
         )
 
     with col3:
         subcategory_filter = st.selectbox(
-            "Filter by subcategory",
+            "Filter by subcategory (optional)",
             options=["-- all --"] + subcategories
         )
 
@@ -55,7 +59,9 @@ def run():
             options=["-- all --", "budget", "income"]
         )
 
+    # -------------------------------------------
     # Apply filters
+    # -------------------------------------------
     month_val = None if month_filter == "-- all --" else month_filter
     cat_val   = None if category_filter == "-- all --" else category_filter
     sub_val   = None if subcategory_filter == "-- all --" else subcategory_filter
@@ -144,7 +150,6 @@ def run():
         if st.button("Delete selected"):
             deleted = bulk_delete(ids)
             st.success(f"Deleted {deleted} row(s).")
-
 
 run()
 

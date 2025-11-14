@@ -3,6 +3,7 @@ import pandas as pd
 from .config import DB_PATH, TABLE_NAME
 import os
 from datetime import date
+import random
 
 
 def get_conn():
@@ -34,28 +35,66 @@ def ensure_db_exists():
     conn.close()
 
 def seed_sample_data():
-    """Insert sample entries for testing/demo purposes."""
+    """
+    Seed the database with multiple months of sample data.
+    """
     ensure_db_exists()
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     cur = conn.cursor()
 
-    sample_entries = [
-        ("budget", str(date.today()), f"{date.today().year}-{date.today().month:02d}", "Food", "Groceries", "Weekly groceries", 150.0, 145.0, "Cash", ""),
-        ("budget", str(date.today()), f"{date.today().year}-{date.today().month:02d}", "Transport", "Fuel", "Car fuel", 80.0, 78.5, "Card", ""),
-        ("income", str(date.today()), f"{date.today().year}-{date.today().month:02d}", "Salary", "", "Monthly salary", 0.0, 3000.0, "Bank", ""),
-        ("budget", str(date.today()), f"{date.today().year}-{date.today().month:02d}", "Entertainment", "Movies", "Cinema night", 50.0, 45.0, "Card", ""),
-    ]
+    # Clear existing data (optional, comment out if not desired)
+    cur.execute(f"DELETE FROM {TABLE_NAME}")
+    conn.commit()
 
-    for entry in sample_entries:
-        cur.execute(f"""
-            INSERT INTO {TABLE_NAME} (entry_type, date, month, category, subcategory, description, budgeted, actual, account, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, entry)
+    # Sample categories and subcategories
+    categories = {
+        "Food": ["Groceries", "Dining Out"],
+        "Transport": ["Fuel", "Taxi", "Bus"],
+        "Income": ["Salary", "Freelance"],
+        "Entertainment": ["Movies", "Games"],
+        "Utilities": ["Electricity", "Internet"],
+    }
 
+    # Generate data for the last 6 months
+    today = date.today()
+    for month_offset in range(0, 6):
+        month_date = (today.replace(day=1) - timedelta(days=month_offset*30))
+        month_str = f"{month_date.year}-{month_date.month:02d}"
+
+        for cat, subcats in categories.items():
+            for subcat in subcats:
+                # Randomly decide whether to insert an entry
+                if random.random() > 0.5:
+                    entry_type = "income" if cat == "Income" else "budget"
+                    entry_date = month_date.replace(day=random.randint(1, 28))
+                    description = f"Sample {subcat} expense" if entry_type == "budget" else f"Sample {subcat} income"
+                    budgeted = round(random.uniform(50, 500), 2) if entry_type == "budget" else 0
+                    actual = round(random.uniform(50, 500), 2) if entry_type == "budget" else budgeted
+                    account = random.choice(["Cash", "Bank", "Card"])
+                    notes = ""
+
+                    cur.execute(
+                        f"""
+                        INSERT INTO {TABLE_NAME} 
+                        (entry_type, date, month, category, subcategory, description, budgeted, actual, account, notes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            entry_type,
+                            entry_date.isoformat(),
+                            month_str,
+                            cat,
+                            subcat,
+                            description,
+                            budgeted,
+                            actual,
+                            account,
+                            notes
+                        )
+                    )
     conn.commit()
     conn.close()
-    print(f"Inserted {len(sample_entries)} sample entries into {DB_PATH}")
-
+    print("Seeded sample data for multiple months.")
 
 def fetch_entries(month=None, category=None, subcategory=None, entry_type=None):
     conn = get_conn()
