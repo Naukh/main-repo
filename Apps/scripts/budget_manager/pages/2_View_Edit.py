@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 from core.db import (
     fetch_entries,
     seed_sample_data,
@@ -10,35 +9,33 @@ from core.db import (
 )
 from components.quit_botton import quit_button
 
-
 st.set_page_config(page_title="View/Edit", layout="wide")
 
 def run():
     st.title("📋 View & Edit Entries")
 
-    # 1️⃣ Ensure folder and table exist
+    # -------------------------------
+    # Ensure DB exists and seed if empty
+    # -------------------------------
     ensure_db_exists()
-
-    # 2️⃣ Only seed if empty
     try:
         if fetch_entries().empty:
             seed_sample_data()
-    except Exception as e:
-        # Likely database file missing; create & seed
+    except Exception:
         seed_sample_data()
 
-    # -------------------------------------------
+    # -------------------------------
     # Fetch all entries
-    # -------------------------------------------
+    # -------------------------------
     df_all = fetch_entries()
 
     if df_all.empty:
         st.info("No entries in database.")
         return
 
-    # -------------------------------------------
+    # -------------------------------
     # Filter options
-    # -------------------------------------------
+    # -------------------------------
     months = sorted(df_all["month"].dropna().unique(), reverse=True)
     categories, cat_subpairs = fetch_distinct_categories_subcategories()
     categories = sorted(categories)
@@ -56,24 +53,27 @@ def run():
     with col2:
         category_filter = st.selectbox(
             "Filter by category (optional)",
-            options=["-- all --"] + categories
+            options=["-- all --"] + categories,
+            index=0
         )
 
     with col3:
         subcategory_filter = st.selectbox(
             "Filter by subcategory (optional)",
-            options=["-- all --"] + subcategories
+            options=["-- all --"] + subcategories,
+            index=0
         )
 
     with col4:
         entry_type_filter = st.selectbox(
             "Entry type",
-            options=["-- all --", "budget", "income"]
+            options=["-- all --", "budget", "income"],
+            index=0
         )
 
-    # -------------------------------------------
+    # -------------------------------
     # Apply filters
-    # -------------------------------------------
+    # -------------------------------
     month_val = None if month_filter == "-- all --" else month_filter
     cat_val   = None if category_filter == "-- all --" else category_filter
     sub_val   = None if subcategory_filter == "-- all --" else subcategory_filter
@@ -92,9 +92,9 @@ def run():
 
     st.write("Edit inline and click **Save changes**:")
 
-    # -------------------------------------------
+    # -------------------------------
     # Editable table
-    # -------------------------------------------
+    # -------------------------------
     editable_df = st.data_editor(
         df,
         width="stretch",
@@ -113,9 +113,9 @@ def run():
         },
     )
 
-    # -------------------------------------------
+    # -------------------------------
     # Detect modified rows
-    # -------------------------------------------
+    # -------------------------------
     merged = editable_df.merge(df, on="id", suffixes=("_new", "_orig"))
 
     changed_mask = (
@@ -134,9 +134,9 @@ def run():
     changed_rows = merged[changed_mask]
     st.write(f"**{len(changed_rows)} row(s) changed.**")
 
-    # -------------------------------------------
+    # -------------------------------
     # Save changes button
-    # -------------------------------------------
+    # -------------------------------
     if not changed_rows.empty:
         if st.button("Save changes"):
             to_update = changed_rows[[
@@ -152,9 +152,9 @@ def run():
             updated = bulk_update_rows(to_update)
             st.success(f"Updated {updated} rows.")
 
-    # -------------------------------------------
+    # -------------------------------
     # Delete rows
-    # -------------------------------------------
+    # -------------------------------
     st.write("---")
     ids = st.multiselect("Select rows to delete (by ID)", df["id"].tolist())
 
@@ -163,6 +163,6 @@ def run():
             deleted = bulk_delete(ids)
             st.success(f"Deleted {deleted} row(s).")
 
-run()
 
+run()
 quit_button()

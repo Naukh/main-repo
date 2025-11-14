@@ -7,13 +7,17 @@ st.set_page_config(page_title="Add Entry", layout="wide")
 
 def run():
     st.title("➕ Add Entry")
+    today = date.today()
+
     with st.form("add_entry", clear_on_submit=True):
-
+        # Entry type
         entry_type = st.selectbox("Entry Type", ["budget", "income"])
-        today = date.today()
-        month = st.text_input("Month (YYYY-MM)", value=f"{today.year}-{today.month:02d}")
-        date_input = st.date_input("Date", value=today)
 
+        # Date input
+        date_input = st.date_input("Date", value=today)
+        month = date_input.strftime("%Y-%m")  # derive month automatically
+
+        # Category / subcategory selection
         categories, cat_sub = fetch_distinct_categories_subcategories()
         categories = sorted(categories)
 
@@ -21,12 +25,14 @@ def run():
         subcats = sorted([sc for c, sc in cat_sub if c == category])
         subcategory = st.selectbox("Subcategory", [""] + subcats)
 
+        # Other fields
         description = st.text_input("Description")
         budgeted = st.number_input("Budgeted", value=0.0)
         actual = st.number_input("Actual", value=0.0)
         account = st.text_input("Account")
         notes = st.text_area("Notes")
 
+        # Submit button
         if st.form_submit_button("Save"):
             entry = dict(
                 entry_type=entry_type,
@@ -44,5 +50,4 @@ def run():
             st.success("Entry saved.")
 
 run()
-
 quit_button()

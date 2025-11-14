@@ -1,6 +1,6 @@
 import streamlit as st
 from components.quit_botton import quit_button
-import pandas as pd
+
 from core.db import (
     ensure_db_exists,
     seed_sample_data,
