@@ -1,8 +1,8 @@
 import sqlite3
-import pandas as pd
 from .config import DB_PATH, TABLE_NAME
 import os
-from datetime import date, timedelta
+from datetime import date
+from dateutil.relativedelta import relativedelta
 import random
 
 # -------------------------------
@@ -45,7 +45,7 @@ def ensure_db_exists():
 def seed_sample_data():
     """Seed database with multi-month sample entries."""
     ensure_db_exists()
-    conn = get_conn()
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     # Clear existing data
@@ -63,14 +63,16 @@ def seed_sample_data():
     today = date.today()
 
     for month_offset in range(0, 6):
-        # Calculate month start
-        month_date = (today.replace(day=1) - timedelta(days=month_offset*30))
+        # Correctly compute the first day of each past month
+        month_date = today.replace(day=1) - relativedelta(months=month_offset)
         month_str = f"{month_date.year}-{month_date.month:02d}"
 
         for cat, subcats in categories.items():
             for subcat in subcats:
+                # Randomly decide whether to insert an entry
                 if random.random() > 0.5:
                     entry_type = "income" if cat == "Income" else "budget"
+                    # Random day in that month
                     entry_date = month_date.replace(day=random.randint(1, 28))
                     description = f"Sample {subcat} {'income' if entry_type=='income' else 'expense'}"
                     budgeted = round(random.uniform(50, 500), 2) if entry_type == "budget" else 0
@@ -90,7 +92,6 @@ def seed_sample_data():
     conn.commit()
     conn.close()
     print("Seeded sample data for multiple months.")
-
 # -------------------------------
 # Fetch entries
 # -------------------------------
