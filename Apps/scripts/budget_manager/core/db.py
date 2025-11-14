@@ -1,6 +1,7 @@
 import sqlite3
 from .config import DB_PATH, TABLE_NAME
 import os
+import pandas as pd
 from datetime import date
 from dateutil.relativedelta import relativedelta
 import random
