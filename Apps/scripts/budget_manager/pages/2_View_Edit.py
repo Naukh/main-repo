@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd
+from core.db import ensure_db_exists, seed_sample_data, fetch_entries
 
 from core.db import (
     fetch_entries,
@@ -14,6 +14,17 @@ st.set_page_config(page_title="View/Edit", layout="wide")
 
 def run():
     st.title("📋 View & Edit Entries")
+
+    # 1️⃣ Ensure folder and table exist
+    ensure_db_exists()
+
+    # 2️⃣ Only seed if empty
+    try:
+        if fetch_entries().empty:
+            seed_sample_data()
+    except Exception as e:
+        # Likely database file missing; create & seed
+        seed_sample_data()
 
     # -------------------------------------------
     # Fetch all entries

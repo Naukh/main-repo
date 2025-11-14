@@ -9,10 +9,15 @@ from core.db import (
 # -------------------------------
 # Initialize database
 # -------------------------------
+# 1️⃣ Ensure folder and table exist
 ensure_db_exists()
 
-# Seed sample data only if the database is empty
-if fetch_entries().empty:
+# 2️⃣ Only seed if empty
+try:
+    if fetch_entries().empty:
+        seed_sample_data()
+except Exception as e:
+    # Likely database file missing; create & seed
     seed_sample_data()
 
 # -------------------------------
