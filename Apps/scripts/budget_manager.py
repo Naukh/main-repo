@@ -15,9 +15,11 @@ import signal
 
 # CONFIG: adjust if needed
 DB_PATH = os.path.join("..", "data", "budget.db")  # relative to where you run the app
-TABLE_NAME = "entries"
 
-st.set_page_config(page_title="Budget Manager", layout="wide")
+if "db_path" not in st.session_state:
+    st.session_state.db_path = DB_PATH
+
+TABLE_NAME = "entries"
 
 
 # ----------------- DB helpers -----------------
@@ -159,6 +161,7 @@ def add_entry_form():
         date_input = st.date_input("Date (optional)", value=today)
 
         # Category selection with option to add new
+        st.caption("💡 Tip: select '<Add new category>' to create one that doesn't exist yet.")
         chosen_cat = st.selectbox("Category", options=cat_options, index=0)
         new_category = None
         if chosen_cat == "<Add new category>":
@@ -209,6 +212,7 @@ def add_entry_form():
                 }
                 insert_entry(entry)
                 st.success("Entry added to the database.")
+                st.rerun()
 
 
 def view_edit_tab():
@@ -242,7 +246,7 @@ def view_edit_tab():
     editable_df = st.data_editor(
         df,
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         column_config={
             "category": st.column_config.SelectboxColumn(
                 "Category",
@@ -290,7 +294,7 @@ def view_edit_tab():
                                  "description","budgeted","actual","account","notes","id"]
             updated = bulk_update_rows(to_update)
             st.success(f"Updated {updated} rows.")
-            st.experimental_rerun()
+            st.rerun()
 
     # --- Delete Rows ---
     st.write("---")
@@ -299,7 +303,7 @@ def view_edit_tab():
     if ids and st.button("Delete selected"):
         deleted = bulk_delete_by_id(ids)
         st.success(f"Deleted {deleted} rows.")
-        st.experimental_rerun()
+        st.rerun()
 
 
 def summary_tab():
@@ -324,7 +328,7 @@ def summary_tab():
     month_totals["Balance"] = month_totals["Income_total"] - month_totals["Actual_total"]
 
     st.subheader("Monthly totals")
-    st.dataframe(month_totals.sort_values("month", ascending=False).reset_index(drop=True), use_container_width=True)
+    st.dataframe(month_totals.sort_values("month", ascending=False).reset_index(drop=True), width="stretch")
 
     st.subheader("Category totals (latest months)")
     cat_totals = grouped.groupby("category")["Actual_total"].sum().sort_values(ascending=False)
