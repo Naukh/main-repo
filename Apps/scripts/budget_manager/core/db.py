@@ -22,6 +22,8 @@ def ensure_db_exists():
     if not os.path.exists(folder):
         os.makedirs(folder, exist_ok=True)
 
+    is_new_db = not os.path.exists(DB_PATH)
+
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(f"""
@@ -41,6 +43,8 @@ def ensure_db_exists():
     """)
     conn.commit()
     conn.close()
+
+    return is_new_db
 
 # -------------------------------
 # Seed sample data
