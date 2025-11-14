@@ -14,7 +14,7 @@ from typing import List, Tuple
 import signal
 
 # CONFIG: adjust if needed
-DB_PATH = os.path.join("..", "data", "budget.db")  # relative to where you run the app
+DB_PATH = os.path.join("data", "budget.db")  # relative to where you run the app
 
 if "db_path" not in st.session_state:
     st.session_state.db_path = DB_PATH

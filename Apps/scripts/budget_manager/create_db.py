@@ -7,7 +7,7 @@ Run this once before importing data.
 import sqlite3
 import os
 
-DB_PATH = os.path.join("..", "data", "budget.db")
+DB_PATH = os.path.join("data", "budget.db")
 
 def create_database(db_path=DB_PATH):
     os.makedirs(os.path.dirname(db_path), exist_ok=True)

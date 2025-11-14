@@ -7,8 +7,8 @@ import argparse
 
 # Paths
 BASE_DIR = os.path.dirname(__file__)
-CSV_DIR = os.path.join(BASE_DIR, "..", "data", "Monthly_budget_file")
-DB_PATH = os.path.join(BASE_DIR, "..", "data", "budget.db")
+CSV_DIR = os.path.join(BASE_DIR, "..", "..", "data", "Monthly_budget_file")
+DB_PATH = os.path.join(BASE_DIR, "data", "budget.db")
 
 def get_month_from_filename(fname):
     """Extract YYYY-MM from a filename like '2023-02.csv'"""
