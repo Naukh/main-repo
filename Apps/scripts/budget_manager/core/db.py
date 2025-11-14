@@ -2,10 +2,6 @@
 import sqlite3
 import os
 import pandas as pd
-from datetime import date
-from dateutil.relativedelta import relativedelta
-import random
-
 from .config import DB_PATH, TABLE_NAME
 
 # -------------------------------
@@ -21,8 +17,6 @@ def ensure_db_exists():
     folder = os.path.dirname(DB_PATH)
     if not os.path.exists(folder):
         os.makedirs(folder, exist_ok=True)
-
-    is_new_db = not os.path.exists(DB_PATH)
 
     conn = get_conn()
     cur = conn.cursor()
@@ -44,61 +38,6 @@ def ensure_db_exists():
     conn.commit()
     conn.close()
 
-    return is_new_db
-
-# -------------------------------
-# Seed sample data
-# -------------------------------
-
-def seed_sample_data():
-    """Seed database with multi-month sample entries."""
-    ensure_db_exists()
-    conn = get_conn()
-    cur = conn.cursor()
-
-    # Clear existing data
-    cur.execute(f"DELETE FROM {TABLE_NAME}")
-    conn.commit()
-
-    categories = {
-        "Food": ["Groceries", "Dining Out"],
-        "Transport": ["Fuel", "Taxi", "Bus"],
-        "Income": ["Salary", "Freelance"],
-        "Entertainment": ["Movies", "Games"],
-        "Utilities": ["Electricity", "Internet"],
-    }
-
-    today = date.today()
-
-    # Generate 6 months of entries
-    for month_offset in range(0, 6):
-        month_date = today.replace(day=1) - relativedelta(months=month_offset)
-        month_str = f"{month_date.year}-{month_date.month:02d}"
-
-        for cat, subcats in categories.items():
-            for subcat in subcats:
-                # Randomly decide whether to insert an entry
-                if random.random() > 0.5:
-                    entry_type = "income" if cat == "Income" else "budget"
-                    entry_day = random.randint(1, 28)
-                    entry_date = month_date.replace(day=entry_day)
-                    description = f"Sample {subcat} {'income' if entry_type=='income' else 'expense'}"
-                    budgeted = round(random.uniform(50, 500), 2) if entry_type == "budget" else 0
-                    actual = round(random.uniform(50, 500), 2) if entry_type == "budget" else budgeted
-                    account = random.choice(["Cash", "Bank", "Card"])
-                    notes = ""
-
-                    cur.execute(
-                        f"""
-                        INSERT INTO {TABLE_NAME} 
-                        (entry_type, date, month, category, subcategory, description, budgeted, actual, account, notes)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (entry_type, entry_date.isoformat(), month_str, cat, subcat, description, budgeted, actual, account, notes)
-                    )
-
-    conn.commit()
-    conn.close()
 
 # -------------------------------
 # Fetch entries
@@ -138,6 +77,7 @@ def fetch_distinct_categories_subcategories():
     cat_sub = [(c, sc) for c, sc in cur.fetchall()]
     conn.close()
     return categories, cat_sub
+
 
 # -------------------------------
 # Insert / update / delete

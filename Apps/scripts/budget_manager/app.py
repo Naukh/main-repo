@@ -1,17 +1,12 @@
 import streamlit as st
 from components.quit_botton import quit_button
-
-from core.db import (
-    ensure_db_exists,
-    seed_sample_data,
-    fetch_entries,
-)
+from core.db import ensure_db_exists
 
 # -------------------------------
 # Initialize database
 # -------------------------------
-
-ensure_db_exists()  # just make sure folder & table exist
+# Just ensure the folder & table exist
+ensure_db_exists()
 
 # -------------------------------
 # Streamlit page setup
