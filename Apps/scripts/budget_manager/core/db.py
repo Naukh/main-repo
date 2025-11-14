@@ -6,9 +6,54 @@ import os
 def get_conn():
     return sqlite3.connect(DB_PATH)
 
-def ensure_db_available():
-    if not os.path.exists(DB_PATH):
-        raise FileNotFoundError(f"Database not found: {DB_PATH}")
+def ensure_db_exists():
+    """Create database and table if they don't exist."""
+    folder = os.path.dirname(DB_PATH)
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entry_type TEXT,
+            date TEXT,
+            month TEXT,
+            category TEXT,
+            subcategory TEXT,
+            description TEXT,
+            budgeted REAL,
+            actual REAL,
+            account TEXT,
+            notes TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def seed_sample_data():
+    """Insert sample entries for testing/demo purposes."""
+    ensure_db_exists()
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    sample_entries = [
+        ("budget", str(date.today()), f"{date.today().year}-{date.today().month:02d}", "Food", "Groceries", "Weekly groceries", 150.0, 145.0, "Cash", ""),
+        ("budget", str(date.today()), f"{date.today().year}-{date.today().month:02d}", "Transport", "Fuel", "Car fuel", 80.0, 78.5, "Card", ""),
+        ("income", str(date.today()), f"{date.today().year}-{date.today().month:02d}", "Salary", "", "Monthly salary", 0.0, 3000.0, "Bank", ""),
+        ("budget", str(date.today()), f"{date.today().year}-{date.today().month:02d}", "Entertainment", "Movies", "Cinema night", 50.0, 45.0, "Card", ""),
+    ]
+
+    for entry in sample_entries:
+        cur.execute(f"""
+            INSERT INTO {TABLE_NAME} (entry_type, date, month, category, subcategory, description, budgeted, actual, account, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, entry)
+
+    conn.commit()
+    conn.close()
+    print(f"Inserted {len(sample_entries)} sample entries into {DB_PATH}")
+
 
 def fetch_entries(month=None, category=None, subcategory=None, entry_type=None):
     conn = get_conn()
