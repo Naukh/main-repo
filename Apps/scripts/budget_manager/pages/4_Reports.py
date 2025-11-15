@@ -161,6 +161,11 @@ if st.button("Generate HTML Report"):
                 background-color: #2a2a2a;  /* dropdown options background */
                 color: #e0e0e0;             /* dropdown options text */
             }}
+            .dataTable_length select option:checked,
+            .dataTable_length select option:hover {{
+                background-color:#555 !important; /* darker highligher*/
+                color:#e0e0e0 !important; /* light text*/
+            }}
             body {{ background-color:#121212; color:#e0e0e0; font-family:Arial, sans-serif; margin:30px; }}
             h1, h2 {{ color:#ffffff; }}
             .section {{ margin-bottom:40px; padding:20px; background:#1e1e1e; border-radius:10px; box-shadow:0 0 10px #00000055; }}
