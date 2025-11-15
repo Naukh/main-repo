@@ -160,9 +160,13 @@ if st.button("Generate HTML Report"):
         <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
         <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
         <script>
-            $(document).ready(function() {{
-                $('table').DataTable({{ "pageLength": {table_rows or len(df)}, "lengthMenu": [10, 25, 50, -1], "language": {{ "search": "Filter:" }} }});
+        $(document).ready(function() {{
+            $('table').DataTable({{
+                "pageLength": {table_rows if table_rows is not None else len(df)}, 
+                "lengthMenu": [[10, 25, 50, -1], ["10", "25", "50", "All"]],
+                "language": { "search": "Filter:" }
             }});
+        }});
         </script>
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     </head>
