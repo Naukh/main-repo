@@ -42,6 +42,7 @@ fig1 = px.line(
     markers=True,
     title="Total Expenses by Month",
 )
+fig1.update_layout(template="plotly_dark")
 st.plotly_chart(fig1, width="stretch")
 
 st.markdown("---")
@@ -64,6 +65,7 @@ fig2 = px.line(
     markers=True,
     title="Income vs Expense vs Balance",
 )
+fig2.update_layout(template="plotly_dark")
 st.plotly_chart(fig2, width="stretch")
 
 st.markdown("---")
@@ -85,6 +87,7 @@ fig3 = px.bar(
     y="actual",
     title=f"Spending Trend: {category_choice}",
 )
+fig3.update_layout(template="plotly_dark")
 st.plotly_chart(fig3, width="stretch")
 
 st.markdown("---")
