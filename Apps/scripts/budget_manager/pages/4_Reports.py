@@ -42,7 +42,7 @@ fig1 = px.line(
     markers=True,
     title="Total Expenses by Month",
 )
-st.plotly_chart(fig1, use_container_width=True)
+st.plotly_chart(fig1, width="stretch")
 
 st.markdown("---")
 
@@ -64,7 +64,7 @@ fig2 = px.line(
     markers=True,
     title="Income vs Expense vs Balance",
 )
-st.plotly_chart(fig2, use_container_width=True)
+st.plotly_chart(fig2, width="stretch")
 
 st.markdown("---")
 
@@ -85,7 +85,7 @@ fig3 = px.bar(
     y="actual",
     title=f"Spending Trend: {category_choice}",
 )
-st.plotly_chart(fig3, use_container_width=True)
+st.plotly_chart(fig3, width="stretch")
 
 st.markdown("---")
 
@@ -99,33 +99,83 @@ if st.button("Generate HTML Report"):
     # Build HTML
     html_content = f"""
     <html>
-        <head>
-            <title>Budget Report</title>
-            <style>
-                body {{ font-family: Arial; margin: 20px; }}
-                h1, h2 {{ color: #2c3e50; }}
-                .section {{ margin-bottom: 40px; }}
-            </style>
-        </head>
-        <body>
-            <h1>Budget Report</h1>
-            <p>Generated on: {datetime.now()}</p>
+    <head>
+        <title>Budget Report</title>
+        <style>
+            /* ---- DARK THEME ---- */
+            body {{
+                background-color: #121212;
+                color: #e0e0e0;
+                font-family: Arial, sans-serif;
+                margin: 30px;
+            }}
 
-            <div class="section">
-                <h2>Expenses per Month</h2>
-                {expenses_per_month.to_html(index=False)}
-            </div>
+            h1, h2 {{
+                color: #ffffff;
+                margin-bottom: 10px;
+            }}
 
-            <div class="section">
-                <h2>Income vs Expense vs Balance</h2>
-                {merged.to_html(index=False)}
-            </div>
+            .section {{
+                margin-bottom: 40px;
+                padding: 20px;
+                background: #1e1e1e;
+                border-radius: 10px;
+                box-shadow: 0 0 10px #00000055;
+            }}
 
-            <div class="section">
-                <h2>Category Trend — {category_choice}</h2>
-                {df_cat_group.to_html(index=False)}
-            </div>
-        </body>
+            /* ---- TABLE DARK MODE ---- */
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+            }}
+
+            th {{
+                background-color: #333;
+                color: #fff;
+                padding: 8px;
+            }}
+
+            td {{
+                background-color: #222;
+                padding: 8px;
+                color: #ddd;
+            }}
+
+            tr:nth-child(even) td {{
+                background-color: #2a2a2a;
+            }}
+
+            tr:hover td {{
+                background-color: #444;
+            }}
+
+            /* ---- LINKS ---- */
+            a {{
+                color: #4da3ff;
+            }}
+        </style>
+    </head>
+
+    <body>
+        <h1>Budget Report</h1>
+        <p>Generated on: {datetime.now()}</p>
+
+        <div class="section">
+            <h2>Expenses per Month</h2>
+            {expenses_per_month.to_html(index=False)}
+        </div>
+
+        <div class="section">
+            <h2>Income vs Expense vs Balance</h2>
+            {merged.to_html(index=False)}
+        </div>
+
+        <div class="section">
+            <h2>Category Trend — {category_choice}</h2>
+            {df_cat_group.to_html(index=False)}
+        </div>
+
+    </body>
     </html>
     """
 
