@@ -115,5 +115,5 @@ streamlit run app.py --server.port 9000
 # Online app
 The App is deployed online using Streamlit Community Cloud. The git account is already link and app can be accessed by
 ```
-https://gyqimmcdsxbagy6jtast5e.streamlit.app/
+https://naukh-budget-app.streamlit.app/
 ```
