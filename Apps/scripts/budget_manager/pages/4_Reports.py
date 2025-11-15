@@ -44,7 +44,7 @@ table_rows = None if selected_entries == "All" else int(selected_entries)
 st.header("1️⃣ Expenses Across All Months")
 expenses = df[df["entry_type"] == "budget"]
 expenses_per_month = expenses.groupby("month")["actual"].sum().reset_index()
-expenses_color = st.color_picker("Expenses line color", "#FF6B6B")
+expense_color = st.color_picker("Select line color for Expenses per Month", "#FF5733")
 
 fig1 = px.line(
     expenses_per_month,
@@ -54,13 +54,11 @@ fig1 = px.line(
     title="Total Expenses by Month",
     line_shape="linear"
 )
-fig1.update_traces(line=dict(color=expenses_color))
+fig1.update_traces(line=dict(color=expense_color))
 fig1.update_layout(template="plotly_dark")
 st.plotly_chart(fig1, use_container_width=True)
-
 st.subheader("Expenses Table")
 st.dataframe(expenses_per_month.head(table_rows))
-
 st.markdown("---")
 
 # ----------------------------
@@ -71,7 +69,6 @@ income = df[df["entry_type"] == "income"].groupby("month")["actual"].sum().reset
 expense = expenses_per_month.copy()
 merged = income.merge(expense, on="month", how="outer", suffixes=("_income", "_expense")).fillna(0)
 merged["balance"] = merged["actual_income"] - merged["actual_expense"]
-
 line_color_expense = st.color_picker("Select line color for Expenses per Month", "#FF5733")
 line_color_income = st.color_picker("Select line color for Income", "#33FF57")
 line_color_balance = st.color_picker("Select line color for Balance", "#3380FF")
@@ -88,10 +85,8 @@ fig2.update_traces(selector=dict(name="actual_expense"), line=dict(color=line_co
 fig2.update_traces(selector=dict(name="balance"), line=dict(color=line_color_balance))
 fig2.update_layout(template="plotly_dark")
 st.plotly_chart(fig2, use_container_width=True)
-
 st.subheader("Income / Expenses / Balance Table")
 st.dataframe(merged.head(table_rows))
-
 st.markdown("---")
 
 # ----------------------------
@@ -103,7 +98,7 @@ category_choice = st.selectbox("Choose a category:", categories)
 
 df_cat = df[df["category"] == category_choice]
 df_cat_group = df_cat.groupby("month")["actual"].sum().reset_index()
-category_color = st.color_picker("Select line color for Category Expense", "#FF5733")
+category_color = st.color_picker("Select line color for Balance", "#3380FF")
 
 fig3 = px.bar(
     df_cat_group,
@@ -114,20 +109,22 @@ fig3 = px.bar(
 fig3.update_traces(marker_color=category_color)
 fig3.update_layout(template="plotly_dark")
 st.plotly_chart(fig3, use_container_width=True)
-
 st.subheader(f"Table for {category_choice}")
 st.dataframe(df_cat_group.head(table_rows))
-
 st.markdown("---")
 
 # ----------------------------
-# Export HTML Report
+# Export HTML Report (interactive)
 # ----------------------------
-st.header("📄 Export HTML Report")
+st.header("📄 Export Interactive HTML Report")
 
 if st.button("Generate HTML Report"):
+    # Convert Plotly figures to HTML snippets
+    fig1_html = fig1.to_html(full_html=False, include_plotlyjs='cdn')
+    fig2_html = fig2.to_html(full_html=False, include_plotlyjs=False)
+    fig3_html = fig3.to_html(full_html=False, include_plotlyjs=False)
 
-    # Build HTML string with interleaved tables + plots
+    # Build HTML with interleaved tables + interactive plots
     html_content = f"""
     <html>
     <head>
@@ -142,6 +139,7 @@ if st.button("Generate HTML Report"):
             tr:nth-child(even) td {{ background-color:#2a2a2a; }}
             tr:hover td {{ background-color:#444; }}
         </style>
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     </head>
     <body>
         <h1>Budget Report</h1>
@@ -150,19 +148,19 @@ if st.button("Generate HTML Report"):
         <div class="section">
             <h2>1️⃣ Expenses per Month</h2>
             {expenses_per_month.head(table_rows).to_html(index=False)}
-            <img src="data:image/png;base64,{fig1.to_image(format='png').decode()}" />
+            {fig1_html}
         </div>
 
         <div class="section">
             <h2>2️⃣ Income vs Expenses vs Balance</h2>
             {merged.head(table_rows).to_html(index=False)}
-            <img src="data:image/png;base64,{fig2.to_image(format='png').decode()}" />
+            {fig2_html}
         </div>
 
         <div class="section">
             <h2>3️⃣ Category Trend — {category_choice}</h2>
             {df_cat_group.head(table_rows).to_html(index=False)}
-            <img src="data:image/png;base64,{fig3.to_image(format='png').decode()}" />
+            {fig3_html}
         </div>
     </body>
     </html>
@@ -171,5 +169,5 @@ if st.button("Generate HTML Report"):
     with open(HTML_PATH, "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    st.success(f"Report generated → {HTML_PATH}")
-    st.download_button("Download Report", data=html_content, file_name="budget_report.html")
+    st.success(f"Interactive report generated → {HTML_PATH}")
+    st.download_button("Download Interactive Report", data=html_content, file_name="budget_report.html")
