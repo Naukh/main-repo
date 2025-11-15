@@ -10,6 +10,7 @@ REPORTS_DIR = os.path.join(BASE_DIR, "reports")
 HTML_FILENAME = "budget_report.html"
 os.makedirs(REPORTS_DIR, exist_ok=True)
 HTML_PATH = os.path.join(REPORTS_DIR, HTML_FILENAME)
+LINE_COLOR = "#64b5f6"
 
 st.set_page_config(page_title="Reports", layout="wide")
 st.title("📊 Financial Reports & Analytics")
@@ -30,7 +31,14 @@ df["month"] = df["month"].astype(str)
 # Expenses per month
 expenses = df[df["entry_type"] == "budget"]
 expenses_per_month = expenses.groupby("month")["actual"].sum().reset_index()
-fig1 = px.line(expenses_per_month, x="month", y="actual", markers=True, title="Total Expenses by Month")
+fig1 = px.line(
+    expenses_per_month,
+    x="month",
+    y="actual",
+    markers=True,
+    title="Total Expenses by Month",
+    color_discrete_sequence=["#FF6B6B"],  # <- your line color here
+)
 fig1.update_layout(template="plotly_dark")
 st.plotly_chart(fig1, use_container_width=True)
 
@@ -39,7 +47,14 @@ income = df[df["entry_type"] == "income"].groupby("month")["actual"].sum().reset
 expense = df[df["entry_type"] == "budget"].groupby("month")["actual"].sum().reset_index()
 merged = income.merge(expense, on="month", how="outer", suffixes=("_income", "_expense")).fillna(0)
 merged["balance"] = merged["actual_income"] - merged["actual_expense"]
-fig2 = px.line(merged, x="month", y=["actual_income", "actual_expense", "balance"], markers=True, title="Income vs Expense vs Balance")
+fig2 = px.line(
+    merged,
+    x="month",
+    y=["actual_income", "actual_expense", "balance"],
+    markers=True,
+    title="Income vs Expense vs Balance",
+    color_discrete_sequence=["#3A96F9", "#FF6B6B", "#FFD93D"],  # custom colors for each line
+)
 fig2.update_layout(template="plotly_dark")
 st.plotly_chart(fig2, use_container_width=True)
 
@@ -47,7 +62,13 @@ st.plotly_chart(fig2, use_container_width=True)
 categories = sorted(df["category"].dropna().unique())
 category_choice = st.selectbox("Choose a category:", categories)
 df_cat_group = df[df["category"] == category_choice].groupby("month")["actual"].sum().reset_index()
-fig3 = px.bar(df_cat_group, x="month", y="actual", title=f"Spending Trend: {category_choice}")
+fig3 = px.bar(
+    df_cat_group,
+    x="month",
+    y="actual",
+    title=f"Spending Trend: {category_choice}",
+    color_discrete_sequence=["#FF6B6B"],  # single color for bars
+)
 fig3.update_layout(template="plotly_dark")
 st.plotly_chart(fig3, use_container_width=True)
 
