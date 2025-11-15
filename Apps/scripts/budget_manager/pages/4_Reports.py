@@ -32,10 +32,13 @@ df["month"] = df["month"].astype(str)
 # ----------------------------
 # User options
 # ----------------------------
-
 table_entries_options = ["10", "25", "50", "All"]
-default_entries = "10"
-selected_entries = st.selectbox("Number of table rows in HTML report:", table_entries_options, index=table_entries_options.index(default_entries))
+default_entries = "All"
+selected_entries = st.selectbox(
+    "Number of table rows in HTML report:", 
+    table_entries_options, 
+    index=table_entries_options.index(default_entries)
+)
 table_rows = None if selected_entries == "All" else int(selected_entries)
 
 # ----------------------------
@@ -44,7 +47,7 @@ table_rows = None if selected_entries == "All" else int(selected_entries)
 st.header("1️⃣ Expenses Across All Months")
 expenses = df[df["entry_type"] == "budget"]
 expenses_per_month = expenses.groupby("month")["actual"].sum().reset_index()
-expense_color = st.color_picker("Select line color for Expenses", "#FF5733")
+expense_color = st.color_picker("Select line color for Expenses per Month", "#FF5733", key="expense_color")
 
 fig1 = px.line(
     expenses_per_month,
@@ -66,12 +69,12 @@ st.markdown("---")
 # ----------------------------
 st.header("2️⃣ Income vs Expenses vs Balance")
 income = df[df["entry_type"] == "income"].groupby("month")["actual"].sum().reset_index()
-expense = expenses_per_month.copy()
-merged = income.merge(expense, on="month", how="outer", suffixes=("_income", "_expense")).fillna(0)
+merged = income.merge(expenses_per_month, on="month", how="outer", suffixes=("_income", "_expense")).fillna(0)
 merged["balance"] = merged["actual_income"] - merged["actual_expense"]
-line_color_expense = st.color_picker("Select line color for Expenses per Month", "#FF5733")
-line_color_income = st.color_picker("Select line color for Income", "#33FF57")
-line_color_balance = st.color_picker("Select line color for Balance", "#3380FF")
+
+line_color_expense = st.color_picker("Expenses line color", "#FF5733", key="income_expense_color")
+line_color_income = st.color_picker("Income line color", "#33FF57", key="income_income_color")
+line_color_balance = st.color_picker("Balance line color", "#3380FF", key="income_balance_color")
 
 fig2 = px.line(
     merged,
@@ -90,47 +93,60 @@ st.dataframe(merged.head(table_rows))
 st.markdown("---")
 
 # ----------------------------
-# Section 3 — Category Trends
+# Section 3 — Category Trends (Multi-select)
 # ----------------------------
 st.header("3️⃣ Category Trends Across All Months")
 categories = sorted(df["category"].dropna().unique())
-category_choice = st.selectbox("Choose a category:", categories)
+category_choices = st.multiselect(
+    "Select one or more categories:", 
+    options=categories, 
+    default=categories[:1]  # default to first category
+)
 
-df_cat = df[df["category"] == category_choice]
-df_cat_group = df_cat.groupby("month")["actual"].sum().reset_index()
-category_color = st.color_picker("Select line color for Category", "#3380FF")
+category_colors = {}
+for cat in category_choices:
+    key_name = f"cat_color_{cat}"
+    category_colors[cat] = st.color_picker(f"Select color for {cat}", "#33AAFF", key=key_name)
+
+df_cat = df[df["category"].isin(category_choices)]
+df_cat_grouped = df_cat.groupby(["month", "category"])["actual"].sum().reset_index()
 
 fig3 = px.bar(
-    df_cat_group,
+    df_cat_grouped,
     x="month",
     y="actual",
-    title=f"Spending Trend: {category_choice}"
+    color="category",
+    barmode="group",
+    title=f"Spending Trend — {', '.join(category_choices)}"
 )
-fig3.update_traces(marker_color=category_color)
+
+# Apply user-chosen colors
+for cat, color in category_colors.items():
+    fig3.update_traces(selector=dict(name=cat), marker_color=color)
+
 fig3.update_layout(template="plotly_dark")
 st.plotly_chart(fig3, use_container_width=True)
-st.subheader(f"Table for {category_choice}")
-st.dataframe(df_cat_group.head(table_rows))
+st.subheader("Category Table")
+st.dataframe(df_cat_grouped.head(table_rows))
 st.markdown("---")
 
 # ----------------------------
-# Export HTML Report (interactive)
+# Export Interactive HTML Report
 # ----------------------------
 st.header("📄 Export Interactive HTML Report")
 
 if st.button("Generate HTML Report"):
-    # Convert Plotly figures to HTML snippets
+    # Convert Plotly figures to HTML
     fig1_html = fig1.to_html(full_html=False, include_plotlyjs='cdn')
     fig2_html = fig2.to_html(full_html=False, include_plotlyjs=False)
     fig3_html = fig3.to_html(full_html=False, include_plotlyjs=False)
 
-    # Build HTML with DataTables for interactive tables
+    # Build HTML with interleaved tables + interactive plots + DataTables
     html_content = f"""
     <html>
     <head>
         <title>Budget Report</title>
-
-        <!-- ---- Dark theme CSS ---- -->
+        <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
         <style>
             body {{ background-color:#121212; color:#e0e0e0; font-family:Arial, sans-serif; margin:30px; }}
             h1, h2 {{ color:#ffffff; }}
@@ -140,53 +156,40 @@ if st.button("Generate HTML Report"):
             td {{ background-color:#222; padding:8px; color:#ddd; }}
             tr:nth-child(even) td {{ background-color:#2a2a2a; }}
             tr:hover td {{ background-color:#444; }}
-            a {{ color:#4da3ff; }}
         </style>
-
-        <!-- ---- Include Plotly JS ---- -->
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-
-        <!-- ---- Include DataTables JS & CSS ---- -->
-        <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
-        <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-        <script type="text/javascript" src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-
+        <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+        <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
         <script>
             $(document).ready(function() {{
-                $('.datatable').DataTable({{
-                    "pageLength": {table_rows if table_rows else '10'},
-                    "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]],
-                    "order": []
-                }});
+                $('table').DataTable({{ "pageLength": {table_rows or len(df)}, "lengthMenu": [10, 25, 50, -1], "language": {{ "search": "Filter:" }} }});
             }});
         </script>
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     </head>
-
     <body>
         <h1>Budget Report</h1>
         <p>Generated on: {datetime.now()}</p>
 
         <div class="section">
             <h2>1️⃣ Expenses per Month</h2>
-            {expenses_per_month.head(table_rows).to_html(index=False, classes="datatable")}
+            {expenses_per_month.head(table_rows).to_html(index=False)}
             {fig1_html}
         </div>
 
         <div class="section">
             <h2>2️⃣ Income vs Expenses vs Balance</h2>
-            {merged.head(table_rows).to_html(index=False, classes="datatable")}
+            {merged.head(table_rows).to_html(index=False)}
             {fig2_html}
         </div>
 
         <div class="section">
-            <h2>3️⃣ Category Trend — {category_choice}</h2>
-            {df_cat_group.head(table_rows).to_html(index=False, classes="datatable")}
+            <h2>3️⃣ Category Trends</h2>
+            {df_cat_grouped.head(table_rows).to_html(index=False)}
             {fig3_html}
         </div>
     </body>
     </html>
     """
-
 
     with open(HTML_PATH, "w", encoding="utf-8") as f:
         f.write(html_content)
