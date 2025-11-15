@@ -5,6 +5,12 @@ import os
 from core.db import fetch_entries   # use your DB file
 from datetime import datetime
 
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # go from /pages to project root
+REPORTS_DIR = os.path.join(BASE_DIR, "reports")
+HTML_FILENAME = "budget_report.html"
+os.makedirs(REPORTS_DIR, exist_ok=True)
+HTML_PATH = os.path.join(REPORTS_DIR, HTML_FILENAME)
+
 st.set_page_config(page_title="Reports", layout="wide")
 st.title("📊 Financial Reports & Analytics")
 
@@ -89,7 +95,6 @@ st.markdown("---")
 st.header("📄 Export HTML Report")
 
 if st.button("Generate HTML Report"):
-    html_path = os.path.join("data", "report_summary.html")
 
     # Build HTML
     html_content = f"""
@@ -124,8 +129,8 @@ if st.button("Generate HTML Report"):
     </html>
     """
 
-    with open(html_path, "w") as f:
+    with open(HTML_PATH, "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    st.success(f"Report generated → {html_path}")
+    st.success(f"Report generated → {HTML_PATH}")
     st.download_button("Download Report", data=html_content, file_name="budget_report.html")
