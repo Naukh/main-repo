@@ -44,7 +44,7 @@ table_rows = None if selected_entries == "All" else int(selected_entries)
 st.header("1️⃣ Expenses Across All Months")
 expenses = df[df["entry_type"] == "budget"]
 expenses_per_month = expenses.groupby("month")["actual"].sum().reset_index()
-expense_color = st.color_picker("Select line color for Expenses per Month", "#FF5733")
+expense_color = st.color_picker("Select line color for Expenses", "#FF5733")
 
 fig1 = px.line(
     expenses_per_month,
@@ -98,7 +98,7 @@ category_choice = st.selectbox("Choose a category:", categories)
 
 df_cat = df[df["category"] == category_choice]
 df_cat_group = df_cat.groupby("month")["actual"].sum().reset_index()
-category_color = st.color_picker("Select line color for Balance", "#3380FF")
+category_color = st.color_picker("Select line color for Category", "#3380FF")
 
 fig3 = px.bar(
     df_cat_group,
