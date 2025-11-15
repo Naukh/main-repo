@@ -124,11 +124,13 @@ if st.button("Generate HTML Report"):
     fig2_html = fig2.to_html(full_html=False, include_plotlyjs=False)
     fig3_html = fig3.to_html(full_html=False, include_plotlyjs=False)
 
-    # Build HTML with interleaved tables + interactive plots
+    # Build HTML with DataTables for interactive tables
     html_content = f"""
     <html>
     <head>
         <title>Budget Report</title>
+
+        <!-- ---- Dark theme CSS ---- -->
         <style>
             body {{ background-color:#121212; color:#e0e0e0; font-family:Arial, sans-serif; margin:30px; }}
             h1, h2 {{ color:#ffffff; }}
@@ -138,33 +140,53 @@ if st.button("Generate HTML Report"):
             td {{ background-color:#222; padding:8px; color:#ddd; }}
             tr:nth-child(even) td {{ background-color:#2a2a2a; }}
             tr:hover td {{ background-color:#444; }}
+            a {{ color:#4da3ff; }}
         </style>
+
+        <!-- ---- Include Plotly JS ---- -->
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+        <!-- ---- Include DataTables JS & CSS ---- -->
+        <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
+        <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        <script type="text/javascript" src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
+        <script>
+            $(document).ready(function() {{
+                $('.datatable').DataTable({{
+                    "pageLength": {table_rows if table_rows else '10'},
+                    "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]],
+                    "order": []
+                }});
+            }});
+        </script>
     </head>
+
     <body>
         <h1>Budget Report</h1>
         <p>Generated on: {datetime.now()}</p>
 
         <div class="section">
             <h2>1️⃣ Expenses per Month</h2>
-            {expenses_per_month.head(table_rows).to_html(index=False)}
+            {expenses_per_month.head(table_rows).to_html(index=False, classes="datatable")}
             {fig1_html}
         </div>
 
         <div class="section">
             <h2>2️⃣ Income vs Expenses vs Balance</h2>
-            {merged.head(table_rows).to_html(index=False)}
+            {merged.head(table_rows).to_html(index=False, classes="datatable")}
             {fig2_html}
         </div>
 
         <div class="section">
             <h2>3️⃣ Category Trend — {category_choice}</h2>
-            {df_cat_group.head(table_rows).to_html(index=False)}
+            {df_cat_group.head(table_rows).to_html(index=False, classes="datatable")}
             {fig3_html}
         </div>
     </body>
     </html>
     """
+
 
     with open(HTML_PATH, "w", encoding="utf-8") as f:
         f.write(html_content)
