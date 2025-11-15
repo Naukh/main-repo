@@ -6,9 +6,9 @@ from core.db import fetch_entries
 from datetime import datetime
 
 # ----------------------------
-# Paths
+# Setup paths
 # ----------------------------
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # from /pages to root
 REPORTS_DIR = os.path.join(BASE_DIR, "reports")
 HTML_FILENAME = "budget_report.html"
 os.makedirs(REPORTS_DIR, exist_ok=True)
@@ -30,12 +30,23 @@ df["budgeted"] = pd.to_numeric(df["budgeted"], errors="coerce").fillna(0)
 df["month"] = df["month"].astype(str)
 
 # ----------------------------
-# Section 1 — Expenses Per Month
+# User options
+# ----------------------------
+line_color_expense = st.color_picker("Select line color for Expenses per Month", "#FF5733")
+line_color_income = st.color_picker("Select line color for Income", "#33FF57")
+line_color_balance = st.color_picker("Select line color for Balance", "#3380FF")
+
+table_entries_options = ["10", "25", "50", "All"]
+default_entries = "10"
+selected_entries = st.selectbox("Number of table rows in HTML report:", table_entries_options, index=table_entries_options.index(default_entries))
+table_rows = None if selected_entries == "All" else int(selected_entries)
+
+# ----------------------------
+# Section 1 — Expenses Across All Months
 # ----------------------------
 st.header("1️⃣ Expenses Across All Months")
 expenses = df[df["entry_type"] == "budget"]
 expenses_per_month = expenses.groupby("month")["actual"].sum().reset_index()
-expenses_color = st.color_picker("Expenses line color", "#FF6B6B")
 
 fig1 = px.line(
     expenses_per_month,
@@ -43,175 +54,113 @@ fig1 = px.line(
     y="actual",
     markers=True,
     title="Total Expenses by Month",
-    color_discrete_sequence=[expenses_color]
+    line_shape="linear"
 )
+fig1.update_traces(line=dict(color=line_color_expense))
 fig1.update_layout(template="plotly_dark")
 st.plotly_chart(fig1, use_container_width=True)
+
+st.subheader("Expenses Table")
+st.dataframe(expenses_per_month.head(table_rows))
+
+st.markdown("---")
 
 # ----------------------------
 # Section 2 — Income vs Expenses vs Balance
 # ----------------------------
 st.header("2️⃣ Income vs Expenses vs Balance")
 income = df[df["entry_type"] == "income"].groupby("month")["actual"].sum().reset_index()
-expense = df[df["entry_type"] == "budget"].groupby("month")["actual"].sum().reset_index()
+expense = expenses_per_month.copy()
 merged = income.merge(expense, on="month", how="outer", suffixes=("_income", "_expense")).fillna(0)
 merged["balance"] = merged["actual_income"] - merged["actual_expense"]
-
-income_color = st.color_picker("Income line color", "#4DA3FF")
-expense_color = st.color_picker("Expense line color", "#FF6B6B")
-balance_color = st.color_picker("Balance line color", "#FFD93D")
 
 fig2 = px.line(
     merged,
     x="month",
     y=["actual_income", "actual_expense", "balance"],
     markers=True,
-    title="Income vs Expense vs Balance",
-    color_discrete_sequence=[income_color, expense_color, balance_color]
+    title="Income vs Expense vs Balance"
 )
+fig2.update_traces(selector=dict(name="actual_income"), line=dict(color=line_color_income))
+fig2.update_traces(selector=dict(name="actual_expense"), line=dict(color=line_color_expense))
+fig2.update_traces(selector=dict(name="balance"), line=dict(color=line_color_balance))
 fig2.update_layout(template="plotly_dark")
 st.plotly_chart(fig2, use_container_width=True)
 
+st.subheader("Income / Expenses / Balance Table")
+st.dataframe(merged.head(table_rows))
+
+st.markdown("---")
+
 # ----------------------------
-# Section 3 — Category Trends (Multiple)
+# Section 3 — Category Trends
 # ----------------------------
 st.header("3️⃣ Category Trends Across All Months")
-all_categories = sorted(df["category"].dropna().unique())
-selected_categories = st.multiselect("Select categories to plot", all_categories, default=all_categories[:3])
+categories = sorted(df["category"].dropna().unique())
+category_choice = st.selectbox("Choose a category:", categories)
 
-category_colors = {}
-for cat in selected_categories:
-    category_colors[cat] = st.color_picker(f"Color for '{cat}'", px.colors.qualitative.Plotly[all_categories.index(cat) % 10])
+df_cat = df[df["category"] == category_choice]
+df_cat_group = df_cat.groupby("month")["actual"].sum().reset_index()
 
-category_fig = px.line(template="plotly_dark")
-category_fig.update_layout(title="Category Trends Across Months", xaxis_title="Month", yaxis_title="Amount")
+fig3 = px.bar(
+    df_cat_group,
+    x="month",
+    y="actual",
+    title=f"Spending Trend: {category_choice}"
+)
+fig3.update_traces(marker_color=line_color_expense)
+fig3.update_layout(template="plotly_dark")
+st.plotly_chart(fig3, use_container_width=True)
 
-# Prepare data for HTML export
-category_tables = []
-for cat in selected_categories:
-    df_cat = df[df["category"] == cat]
-    df_cat_group = df_cat.groupby("month")["actual"].sum().reset_index()
-    category_fig.add_scatter(x=df_cat_group["month"], y=df_cat_group["actual"], mode="lines+markers", name=cat, line=dict(color=category_colors[cat]))
-    category_tables.append((cat, df_cat_group))
+st.subheader(f"Table for {category_choice}")
+st.dataframe(df_cat_group.head(table_rows))
 
-st.plotly_chart(category_fig, use_container_width=True)
-
-# ----------------------------
-# Table page length selection
-# ----------------------------
-st.header("Table Display Options")
-table_page_length = st.selectbox("Number of rows to show per table", ["10", "25", "50", "All"], index=0)
-page_length_js = "0" if table_page_length=="All" else table_page_length
+st.markdown("---")
 
 # ----------------------------
 # Export HTML Report
 # ----------------------------
 st.header("📄 Export HTML Report")
 
-# User selects number of table entries to display
-table_entries_options = ["10", "25", "50", "All"]
-default_entries = "10"
-selected_entries = st.selectbox("Number of table rows in HTML report:", table_entries_options, index=table_entries_options.index(default_entries))
-if selected_entries == "All":
-    table_rows = None
-else:
-    table_rows = int(selected_entries)
-
 if st.button("Generate HTML Report"):
 
-    # Build interleaved HTML
+    # Build HTML string with interleaved tables + plots
     html_content = f"""
     <html>
     <head>
         <title>Budget Report</title>
         <style>
-            body {{
-                background-color: #121212;
-                color: #e0e0e0;
-                font-family: Arial, sans-serif;
-                margin: 30px;
-            }}
-            h1, h2 {{
-                color: #ffffff;
-                margin-bottom: 10px;
-            }}
-            .section {{
-                margin-bottom: 40px;
-                padding: 20px;
-                background: #1e1e1e;
-                border-radius: 10px;
-                box-shadow: 0 0 10px #00000055;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-            }}
-            th {{
-                background-color: #333;
-                color: #fff;
-                padding: 8px;
-            }}
-            td {{
-                background-color: #222;
-                padding: 8px;
-                color: #ddd;
-            }}
-            tr:nth-child(even) td {{
-                background-color: #2a2a2a;
-            }}
-            tr:hover td {{
-                background-color: #444;
-            }}
-            a {{ color: #4da3ff; }}
+            body {{ background-color:#121212; color:#e0e0e0; font-family:Arial, sans-serif; margin:30px; }}
+            h1, h2 {{ color:#ffffff; }}
+            .section {{ margin-bottom:40px; padding:20px; background:#1e1e1e; border-radius:10px; box-shadow:0 0 10px #00000055; }}
+            table {{ width:100%; border-collapse: collapse; }}
+            th {{ background-color:#333; color:#fff; padding:8px; }}
+            td {{ background-color:#222; padding:8px; color:#ddd; }}
+            tr:nth-child(even) td {{ background-color:#2a2a2a; }}
+            tr:hover td {{ background-color:#444; }}
         </style>
-        <!-- Include DataTables -->
-        <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.css"/>
-        <script type="text/javascript" charset="utf8" src="https://code.jquery.com/jquery-3.7.1.js"></script>
-        <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.js"></script>
     </head>
     <body>
         <h1>Budget Report</h1>
         <p>Generated on: {datetime.now()}</p>
 
-        <!-- Section 1: Expenses -->
         <div class="section">
             <h2>1️⃣ Expenses per Month</h2>
-            {expenses_per_month.head(table_rows).to_html(index=False, classes='display')}
-        </div>
-        <div class="section">
-            <h2>Expenses per Month — Chart</h2>
-            {fig1.to_html(include_plotlyjs='cdn', full_html=False)}
+            {expenses_per_month.head(table_rows).to_html(index=False)}
+            <img src="data:image/png;base64,{fig1.to_image(format='png').decode()}" />
         </div>
 
-        <!-- Section 2: Income vs Expense vs Balance -->
         <div class="section">
-            <h2>2️⃣ Income vs Expense vs Balance</h2>
-            {merged.head(table_rows).to_html(index=False, classes='display')}
-        </div>
-        <div class="section">
-            <h2>Income vs Expense vs Balance — Chart</h2>
-            {fig2.to_html(include_plotlyjs='cdn', full_html=False)}
+            <h2>2️⃣ Income vs Expenses vs Balance</h2>
+            {merged.head(table_rows).to_html(index=False)}
+            <img src="data:image/png;base64,{fig2.to_image(format='png').decode()}" />
         </div>
 
-        <!-- Section 3: Category Trend -->
         <div class="section">
             <h2>3️⃣ Category Trend — {category_choice}</h2>
-            {df_cat_group.head(table_rows).to_html(index=False, classes='display')}
+            {df_cat_group.head(table_rows).to_html(index=False)}
+            <img src="data:image/png;base64,{fig3.to_image(format='png').decode()}" />
         </div>
-        <div class="section">
-            <h2>Category Trend — Chart</h2>
-            {fig3.to_html(include_plotlyjs='cdn', full_html=False)}
-        </div>
-
-        <script>
-            $(document).ready( function () {{
-                $('.display').DataTable({{
-                    "pageLength": {table_rows if table_rows else 9999},
-                    "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]],
-                    "scrollX": true
-                }});
-            }});
-        </script>
     </body>
     </html>
     """
