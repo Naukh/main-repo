@@ -8,7 +8,7 @@ from datetime import datetime
 # ----------------------------
 # Paths
 # ----------------------------
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # /pages -> project root
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 REPORTS_DIR = os.path.join(BASE_DIR, "reports")
 HTML_FILENAME = "budget_report.html"
 os.makedirs(REPORTS_DIR, exist_ok=True)
@@ -73,56 +73,72 @@ fig2.update_layout(template="plotly_dark")
 st.plotly_chart(fig2, use_container_width=True)
 
 # ----------------------------
-# Section 3 — Per Category Trends
+# Section 3 — Category Trends (Multiple)
 # ----------------------------
 st.header("3️⃣ Category Trends Across All Months")
-categories = sorted(df["category"].dropna().unique())
-category_choice = st.selectbox("Choose a category:", categories)
-df_cat = df[df["category"] == category_choice]
-df_cat_group = df_cat.groupby("month")["actual"].sum().reset_index()
-cat_color = st.color_picker("Category bar color", "#2018F4")
+all_categories = sorted(df["category"].dropna().unique())
+selected_categories = st.multiselect("Select categories to plot", all_categories, default=all_categories[:3])
 
-fig3 = px.bar(
-    df_cat_group,
-    x="month",
-    y="actual",
-    title=f"Spending Trend: {category_choice}",
-    color_discrete_sequence=[cat_color]
-)
-fig3.update_layout(template="plotly_dark")
-st.plotly_chart(fig3, use_container_width=True)
+category_colors = {}
+for cat in selected_categories:
+    category_colors[cat] = st.color_picker(f"Color for '{cat}'", px.colors.qualitative.Plotly[all_categories.index(cat) % 10])
+
+category_fig = px.line(template="plotly_dark")
+category_fig.update_layout(title="Category Trends Across Months", xaxis_title="Month", yaxis_title="Amount")
+
+# Prepare data for HTML export
+category_tables = []
+for cat in selected_categories:
+    df_cat = df[df["category"] == cat]
+    df_cat_group = df_cat.groupby("month")["actual"].sum().reset_index()
+    category_fig.add_scatter(x=df_cat_group["month"], y=df_cat_group["actual"], mode="lines+markers", name=cat, line=dict(color=category_colors[cat]))
+    category_tables.append((cat, df_cat_group))
+
+st.plotly_chart(category_fig, use_container_width=True)
+
+# ----------------------------
+# Table page length selection
+# ----------------------------
+st.header("Table Display Options")
+table_page_length = st.selectbox("Number of rows to show per table", ["10", "25", "50", "All"], index=0)
+page_length_js = "0" if table_page_length=="All" else table_page_length
 
 # ----------------------------
 # Export HTML Report
 # ----------------------------
 st.header("📄 Export HTML Report")
-
 if st.button("Generate HTML Report"):
 
     # Export interactive Plotly figures as HTML
     fig1_html = fig1.to_html(full_html=False, include_plotlyjs='cdn')
     fig2_html = fig2.to_html(full_html=False, include_plotlyjs=False)
-    fig3_html = fig3.to_html(full_html=False, include_plotlyjs=False)
+    category_fig_html = category_fig.to_html(full_html=False, include_plotlyjs=False)
 
-    # Build interleaved table list
-    tables = [
-        ("Expenses per Month", expenses_per_month),
-        ("Income vs Expense vs Balance", merged),
-        (f"Category Trend — {category_choice}", df_cat_group)
-    ]
-
+    # Build HTML tables
     table_html = ""
-    for title, table_df in tables:
+    # Expenses table
+    table_html += f"""
+    <div class='section'>
+        <h2>Expenses per Month</h2>
+        {expenses_per_month.to_html(index=False, classes='display')}
+    </div>
+    """
+    # Income vs Expense table
+    table_html += f"""
+    <div class='section'>
+        <h2>Income vs Expense vs Balance</h2>
+        {merged.to_html(index=False, classes='display')}
+    </div>
+    """
+    # Category tables
+    for cat, df_cat_group in category_tables:
         table_html += f"""
         <div class='section'>
-            <h2>{title}</h2>
-            <table id="{title.replace(' ','_')}" class="display">
-                {table_df.to_html(index=False, header=True, classes='dataframe')}
-            </table>
+            <h2>Category Trend — {cat}</h2>
+            {df_cat_group.to_html(index=False, classes='display')}
         </div>
         """
 
-    # Full HTML with interleaved charts & tables and DataTables.js
     html_content = f"""
     <html>
     <head>
@@ -139,7 +155,13 @@ if st.button("Generate HTML Report"):
                 margin: 30px;
             }}
             h1, h2 {{ color: #ffffff; margin-bottom: 10px; }}
-            .section {{ margin-bottom: 40px; padding: 20px; background: #1e1e1e; border-radius: 10px; box-shadow: 0 0 10px #00000055; }}
+            .section {{
+                margin-bottom: 40px;
+                padding: 20px;
+                background: #1e1e1e;
+                border-radius: 10px;
+                box-shadow: 0 0 10px #00000055;
+            }}
             table.dataframe {{
                 width: 100%;
                 border-collapse: collapse;
@@ -159,7 +181,6 @@ if st.button("Generate HTML Report"):
             <h2>Expenses per Month Chart</h2>
             {fig1_html}
         </div>
-
         <div class="section">
             <h2>Expenses per Month Table</h2>
             {expenses_per_month.to_html(index=False, classes='display')}
@@ -169,28 +190,24 @@ if st.button("Generate HTML Report"):
             <h2>Income vs Expense vs Balance Chart</h2>
             {fig2_html}
         </div>
-
         <div class="section">
             <h2>Income vs Expense vs Balance Table</h2>
             {merged.to_html(index=False, classes='display')}
         </div>
 
         <div class="section">
-            <h2>Category Trend Chart — {category_choice}</h2>
-            {fig3_html}
+            <h2>Category Trends Chart</h2>
+            {category_fig_html}
         </div>
 
-        <div class="section">
-            <h2>Category Trend Table — {category_choice}</h2>
-            {df_cat_group.to_html(index=False, classes='display')}
-        </div>
+        <!-- Category tables -->
+        {table_html}
 
         <script>
             $(document).ready(function() {{
-                $('table.display').DataTable({{ paging: true, searching: true, info: false }});
+                $('table.display').DataTable({{ paging: true, searching: true, info: false, pageLength: {page_length_js} }});
             }});
         </script>
-
     </body>
     </html>
     """
