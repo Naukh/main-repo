@@ -148,6 +148,19 @@ if st.button("Generate HTML Report"):
         <title>Budget Report</title>
         <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
         <style>
+            /* ---- Dark theme for DataTables dropdowns ---- */
+            .dataTables_length select,
+            .dataTables_filter input {{
+                background-color: #2a2a2a;  /* dark background */
+                color: #e0e0e0;             /* light text */
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 4px 6px;
+            }}
+            .dataTables_length select option {{
+                background-color: #2a2a2a;  /* dropdown options background */
+                color: #e0e0e0;             /* dropdown options text */
+            }}
             body {{ background-color:#121212; color:#e0e0e0; font-family:Arial, sans-serif; margin:30px; }}
             h1, h2 {{ color:#ffffff; }}
             .section {{ margin-bottom:40px; padding:20px; background:#1e1e1e; border-radius:10px; box-shadow:0 0 10px #00000055; }}
