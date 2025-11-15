@@ -164,7 +164,7 @@ if st.button("Generate HTML Report"):
             $('table').DataTable({{
                 "pageLength": {table_rows if table_rows is not None else len(df)}, 
                 "lengthMenu": [[10, 25, 50, -1], ["10", "25", "50", "All"]],
-                "language": { "search": "Filter:" }
+                "language": {{ "search": "Filter:" }}
             }});
         }});
         </script>
