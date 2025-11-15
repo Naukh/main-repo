@@ -23,7 +23,7 @@ def run():
     selected_month = st.selectbox("Select month (or all months):", ["-- all --"] + months)
 
     # Filter by selected month
-    df_filtered = df if selected_month == "-- all --" else df[df["month"] == selected_month]
+    df_filtered = df if selected_month == "-- all --" else df[df["month"] == selected_month].copy()
 
     if df_filtered.empty:
         st.info("No entries for the selected month.")
