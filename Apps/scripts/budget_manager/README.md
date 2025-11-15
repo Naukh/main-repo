@@ -15,9 +15,10 @@ budget_manager/
 │ └── budget.db # SQLite database (auto-connected)
 │
 ├── pages/
-│ ├── add_entry.py # Add new expense/income entries
-│ ├── view_edit.py # Edit & delete rows using table editor
-│ ├── summary.py # Summary tables and totals
+│ ├── 1_Add_Entry.py # Add new expense/income entries
+│ ├── 1_Add_Entry.py # Edit & delete rows using table editor
+│ ├── 3_Summary.py # Summary tables and totals
+│ ├── 4_Reports.py # Summary tables and totals
 │
 ├── components/
 │ └── quit_button.py # Admin-only Quit + Restart controls
@@ -48,6 +49,10 @@ Each module is self-contained so the app remains maintainable and easy to extend
 - Monthly totals (income, expenses, net balance)
 - Category totals
 - Ideal for quick financial overview
+
+### 📊 Financial Reports & Analytics
+- Shows graphs and tables
+- Let's user generate html report
 
 ### 🔐 Admin Controls (Sidebar)
 - Password-protected danger zone

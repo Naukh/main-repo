@@ -1,0 +1,29 @@
+# 💰 Investment Manager (Streamlit App)
+---
+
+## 📂 Project Structure
+```
+investment_manager/
+│
+├── app.py                     # Main Streamlit app entry point
+│
+├── data/
+│   └── portfolio.db           # SQLite DB to store holdings (auto-connected)
+│   └── db_utils.db            # To create DB
+│
+├── pages/
+│   ├── 1_Add_Stock.py         # Add new stock to portfolio
+│   ├── 2_Update_Stock.py      # Update / remove stock holdings
+│   ├── 3_Portfolio_Overview.py# Overview table: stocks, value, P/L
+│   └── 4_Reports.py           # Charts & analytics (allocation, gain/loss)
+│
+├── components/
+│   ├── quit_button.py          # Optional: admin-only Quit / Restart
+│   └── stock_table.py          # Optional reusable Streamlit table for portfolio
+│
+├── utils/
+│   ├── fetch_prices.py         # Functions to fetch stock prices from yfinance
+│   └── calculations.py         # Functions for total value, gain/loss, allocations
+│
+└── README.md                   # Documentation
+```
