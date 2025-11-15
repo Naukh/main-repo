@@ -32,9 +32,6 @@ df["month"] = df["month"].astype(str)
 # ----------------------------
 # User options
 # ----------------------------
-line_color_expense = st.color_picker("Select line color for Expenses per Month", "#FF5733")
-line_color_income = st.color_picker("Select line color for Income", "#33FF57")
-line_color_balance = st.color_picker("Select line color for Balance", "#3380FF")
 
 table_entries_options = ["10", "25", "50", "All"]
 default_entries = "10"
@@ -47,6 +44,7 @@ table_rows = None if selected_entries == "All" else int(selected_entries)
 st.header("1️⃣ Expenses Across All Months")
 expenses = df[df["entry_type"] == "budget"]
 expenses_per_month = expenses.groupby("month")["actual"].sum().reset_index()
+expenses_color = st.color_picker("Expenses line color", "#FF6B6B")
 
 fig1 = px.line(
     expenses_per_month,
@@ -56,7 +54,7 @@ fig1 = px.line(
     title="Total Expenses by Month",
     line_shape="linear"
 )
-fig1.update_traces(line=dict(color=line_color_expense))
+fig1.update_traces(line=dict(color=expenses_color))
 fig1.update_layout(template="plotly_dark")
 st.plotly_chart(fig1, use_container_width=True)
 
@@ -73,6 +71,10 @@ income = df[df["entry_type"] == "income"].groupby("month")["actual"].sum().reset
 expense = expenses_per_month.copy()
 merged = income.merge(expense, on="month", how="outer", suffixes=("_income", "_expense")).fillna(0)
 merged["balance"] = merged["actual_income"] - merged["actual_expense"]
+
+line_color_expense = st.color_picker("Select line color for Expenses per Month", "#FF5733")
+line_color_income = st.color_picker("Select line color for Income", "#33FF57")
+line_color_balance = st.color_picker("Select line color for Balance", "#3380FF")
 
 fig2 = px.line(
     merged,
@@ -101,6 +103,7 @@ category_choice = st.selectbox("Choose a category:", categories)
 
 df_cat = df[df["category"] == category_choice]
 df_cat_group = df_cat.groupby("month")["actual"].sum().reset_index()
+category_color = st.color_picker("Select line color for Category Expense", "#FF5733")
 
 fig3 = px.bar(
     df_cat_group,
@@ -108,7 +111,7 @@ fig3 = px.bar(
     y="actual",
     title=f"Spending Trend: {category_choice}"
 )
-fig3.update_traces(marker_color=line_color_expense)
+fig3.update_traces(marker_color=category_color)
 fig3.update_layout(template="plotly_dark")
 st.plotly_chart(fig3, use_container_width=True)
 
