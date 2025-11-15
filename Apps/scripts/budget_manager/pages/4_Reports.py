@@ -107,46 +107,23 @@ page_length_js = "0" if table_page_length=="All" else table_page_length
 # Export HTML Report
 # ----------------------------
 st.header("📄 Export HTML Report")
+
+# User selects number of table entries to display
+table_entries_options = ["10", "25", "50", "All"]
+default_entries = "10"
+selected_entries = st.selectbox("Number of table rows in HTML report:", table_entries_options, index=table_entries_options.index(default_entries))
+if selected_entries == "All":
+    table_rows = None
+else:
+    table_rows = int(selected_entries)
+
 if st.button("Generate HTML Report"):
 
-    # Export interactive Plotly figures as HTML
-    fig1_html = fig1.to_html(full_html=False, include_plotlyjs='cdn')
-    fig2_html = fig2.to_html(full_html=False, include_plotlyjs=False)
-    category_fig_html = category_fig.to_html(full_html=False, include_plotlyjs=False)
-
-    # Build HTML tables
-    table_html = ""
-    # Expenses table
-    table_html += f"""
-    <div class='section'>
-        <h2>Expenses per Month</h2>
-        {expenses_per_month.to_html(index=False, classes='display')}
-    </div>
-    """
-    # Income vs Expense table
-    table_html += f"""
-    <div class='section'>
-        <h2>Income vs Expense vs Balance</h2>
-        {merged.to_html(index=False, classes='display')}
-    </div>
-    """
-    # Category tables
-    for cat, df_cat_group in category_tables:
-        table_html += f"""
-        <div class='section'>
-            <h2>Category Trend — {cat}</h2>
-            {df_cat_group.to_html(index=False, classes='display')}
-        </div>
-        """
-
+    # Build interleaved HTML
     html_content = f"""
     <html>
     <head>
         <title>Budget Report</title>
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-        <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.css">
-        <script type="text/javascript" charset="utf8" src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-        <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.js"></script>
         <style>
             body {{
                 background-color: #121212;
@@ -154,7 +131,10 @@ if st.button("Generate HTML Report"):
                 font-family: Arial, sans-serif;
                 margin: 30px;
             }}
-            h1, h2 {{ color: #ffffff; margin-bottom: 10px; }}
+            h1, h2 {{
+                color: #ffffff;
+                margin-bottom: 10px;
+            }}
             .section {{
                 margin-bottom: 40px;
                 padding: 20px;
@@ -162,50 +142,74 @@ if st.button("Generate HTML Report"):
                 border-radius: 10px;
                 box-shadow: 0 0 10px #00000055;
             }}
-            table.dataframe {{
+            table {{
                 width: 100%;
                 border-collapse: collapse;
             }}
-            table.dataframe th {{ background-color: #333; color: #fff; padding: 8px; }}
-            table.dataframe td {{ background-color: #222; padding: 8px; color: #ddd; }}
-            table.dataframe tr:nth-child(even) td {{ background-color: #2a2a2a; }}
-            table.dataframe tr:hover td {{ background-color: #444; }}
+            th {{
+                background-color: #333;
+                color: #fff;
+                padding: 8px;
+            }}
+            td {{
+                background-color: #222;
+                padding: 8px;
+                color: #ddd;
+            }}
+            tr:nth-child(even) td {{
+                background-color: #2a2a2a;
+            }}
+            tr:hover td {{
+                background-color: #444;
+            }}
             a {{ color: #4da3ff; }}
         </style>
+        <!-- Include DataTables -->
+        <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.css"/>
+        <script type="text/javascript" charset="utf8" src="https://code.jquery.com/jquery-3.7.1.js"></script>
+        <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.js"></script>
     </head>
     <body>
         <h1>Budget Report</h1>
         <p>Generated on: {datetime.now()}</p>
 
+        <!-- Section 1: Expenses -->
         <div class="section">
-            <h2>Expenses per Month Chart</h2>
-            {fig1_html}
+            <h2>1️⃣ Expenses per Month</h2>
+            {expenses_per_month.head(table_rows).to_html(index=False, classes='display')}
         </div>
         <div class="section">
-            <h2>Expenses per Month Table</h2>
-            {expenses_per_month.to_html(index=False, classes='display')}
-        </div>
-
-        <div class="section">
-            <h2>Income vs Expense vs Balance Chart</h2>
-            {fig2_html}
-        </div>
-        <div class="section">
-            <h2>Income vs Expense vs Balance Table</h2>
-            {merged.to_html(index=False, classes='display')}
+            <h2>Expenses per Month — Chart</h2>
+            {fig1.to_html(include_plotlyjs='cdn', full_html=False)}
         </div>
 
+        <!-- Section 2: Income vs Expense vs Balance -->
         <div class="section">
-            <h2>Category Trends Chart</h2>
-            {category_fig_html}
+            <h2>2️⃣ Income vs Expense vs Balance</h2>
+            {merged.head(table_rows).to_html(index=False, classes='display')}
+        </div>
+        <div class="section">
+            <h2>Income vs Expense vs Balance — Chart</h2>
+            {fig2.to_html(include_plotlyjs='cdn', full_html=False)}
         </div>
 
-        <!-- Category tables -->
-        {table_html}
+        <!-- Section 3: Category Trend -->
+        <div class="section">
+            <h2>3️⃣ Category Trend — {category_choice}</h2>
+            {df_cat_group.head(table_rows).to_html(index=False, classes='display')}
+        </div>
+        <div class="section">
+            <h2>Category Trend — Chart</h2>
+            {fig3.to_html(include_plotlyjs='cdn', full_html=False)}
+        </div>
 
         <script>
-            $(document).ready(function() {{
-                $('table.display').DataTable({{ paging: true, searching: true, info: false, pageLength: {page_length_js} }});
+            $(document).ready( function () {{
+                $('.display').DataTable({{
+                    "pageLength": {table_rows if table_rows else 9999},
+                    "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]],
+                    "scrollX": true
+                }});
             }});
         </script>
     </body>
