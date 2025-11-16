@@ -14,8 +14,9 @@ investment_manager/
 ├── pages/
 │   ├── 1_Add_Stock.py         # Add new stock to portfolio
 │   ├── 2_Update_Stock.py      # Update / remove stock holdings
-│   ├── 3_Portfolio_Overview.py# Overview table: stocks, value, P/L
-│   └── 4_Reports.py           # Charts & analytics (allocation, gain/loss)
+│   ├── 3_Add_Dividend.py      # Add dividend payouts
+│   ├── 4_Portfolio_Overview.py# Overview table: stocks, value, P/L
+│   └── 5_Reports.py           # Charts & analytics (allocation, gain/loss)
 │
 ├── components/
 │   ├── quit_button.py          # Optional: admin-only Quit / Restart
