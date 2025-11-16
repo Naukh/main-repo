@@ -13,7 +13,7 @@ else:
     with st.form("add_dividend_form"):
         symbol = st.selectbox("Select Stock", symbols)
         amount = st.number_input("Dividend Amount", min_value=0.0, step=0.01)
-        currency = st.selectbox("Currency", ["USD", "SEK", "EUR"])
+        currency = st.selectbox("Currency", ["USD", "SEK", "EUR", "PKR"])
         dividend_date = st.date_input("Dividend Date", value=date.today())
         
         submitted = st.form_submit_button("Add Dividend")

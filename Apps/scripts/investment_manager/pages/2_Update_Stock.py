@@ -22,7 +22,7 @@ else:
         with st.form("update_stock_form"):
             new_shares = st.number_input("Update Number of Shares", min_value=0.0, step=0.01, value=stock['shares'])
             new_purchase_price = st.number_input("Update Purchase Price", min_value=0.0, step=0.01, value=stock['purchase_price'])
-            new_currency = st.selectbox("Update Currency", ["USD", "SEK", "EUR"], index=["USD","SEK","EUR"].index(stock['currency']))
+            new_currency = st.selectbox("Update Currency", ["USD", "SEK", "EUR", "PKR"], index=["USD","SEK","EUR", "PKR"].index(stock['currency']))
 
             submitted = st.form_submit_button("Update Stock")
             if submitted:

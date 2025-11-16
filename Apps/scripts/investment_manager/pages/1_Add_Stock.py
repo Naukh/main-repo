@@ -8,7 +8,7 @@ with st.form("add_stock_form"):
     symbol = st.text_input("Stock Symbol (e.g., AAPL)").upper()
     shares = st.number_input("Number of Shares", min_value=0.0, step=0.01)
     purchase_price = st.number_input("Purchase Price per Share", min_value=0.0, step=0.01)
-    currency = st.selectbox("Currency", ["USD", "SEK", "EUR"])
+    currency = st.selectbox("Currency", ["USD", "SEK", "EUR", "PKR"])
     purchase_date = st.date_input("Purchase Date", value=date.today())
     
     submitted = st.form_submit_button("Add Stock")
