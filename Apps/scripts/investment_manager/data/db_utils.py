@@ -75,7 +75,7 @@ def get_holdings():
     conn.close()
     return [dict(row) for row in rows]
 
-def update_holding(id, shares=None, purchase_price=None, currency=None):
+def update_holding(id, shares=None, purchase_price=None, currency=None, current_price=None):
     conn = get_connection()
     cursor = conn.cursor()
     if shares is not None:
@@ -84,8 +84,24 @@ def update_holding(id, shares=None, purchase_price=None, currency=None):
         cursor.execute("UPDATE holdings SET purchase_price = ? WHERE id = ?", (purchase_price, id))
     if currency is not None:
         cursor.execute("UPDATE holdings SET currency = ? WHERE id = ?", (currency.upper(), id))
+    if current_price is not None:
+        # Also update total_value and gain_loss
+        cursor.execute("SELECT shares, purchase_price, dividends_received FROM holdings WHERE id=?", (id,))
+        row = cursor.fetchone()
+        shares_val = row[0]
+        purchase_price_val = row[1]
+        dividends_received = row[2] or 0
+        total_value = shares_val * current_price
+        gain_loss = (total_value - (shares_val * purchase_price_val)) + dividends_received
+
+        cursor.execute(
+            "UPDATE holdings SET current_price=?, total_value=?, gain_loss=? WHERE id=?",
+            (current_price, total_value, gain_loss, id)
+        )
+
     conn.commit()
     conn.close()
+
 
 def delete_holding(id):
     conn = get_connection()

@@ -36,7 +36,9 @@ new_price = st.number_input(
 )
 
 if st.button("Update Price"):
-    update_holding(row["id"], purchase_price=None)  # no change
+    update_holding(row["id"], current_price=new_price)
+    st.success(f"Updated current price for {symbol}")
+    st.rerun()  # use st.rerun() for modern Streamlit
     # update price separately to avoid confusion
     from data.db_utils import get_connection
     conn = get_connection()
