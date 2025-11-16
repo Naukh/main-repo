@@ -80,7 +80,7 @@ for col in drop_cols:
 display_df["total_value"] = display_df["total_value"].fillna(0)
 display_df["gain_loss"] = display_df["gain_loss"].fillna(0)
 
-st.dataframe(display_df, use_container_width=True)
+st.dataframe(display_df, width="stretch")
 
 # --- Portfolio Totals ---
 st.subheader("Portfolio Totals")
