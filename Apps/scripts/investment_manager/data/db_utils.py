@@ -29,7 +29,8 @@ def init_db():
     CREATE TABLE IF NOT EXISTS dividends (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         symbol TEXT NOT NULL,
-        amount REAL NOT NULL,
+        amount_per_share REAL NOT NULL,
+        tax REAL DEFAULT 0,   
         currency TEXT NOT NULL,
         date TEXT NOT NULL
     );
@@ -95,20 +96,83 @@ def delete_holding(id):
 
 # --- Dividends CRUD ---
 
-def add_dividend(symbol, amount, currency, date):
+def add_dividend_record(symbol, amount_per_share, tax, currency, date):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO dividends (symbol, amount, currency, date) VALUES (?, ?, ?, ?)",
-        (symbol.upper(), amount, currency.upper(), date)
-    )
-    # Update dividends_received in holdings
-    cursor.execute(
-        "UPDATE holdings SET dividends_received = dividends_received + ? WHERE symbol = ?",
-        (amount, symbol.upper())
-    )
+    
+    cursor.execute("""
+        INSERT INTO dividends (symbol, amount_per_share, tax, currency, date)
+        VALUES (?, ?, ?, ?, ?)
+    """, (symbol.upper(), amount_per_share, tax, currency, date))
+    
     conn.commit()
     conn.close()
+
+def apply_dividend_to_holding(symbol, total_dividend):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Get all holdings for the symbol
+    cursor.execute("SELECT id, shares, purchase_price, current_price FROM holdings WHERE symbol = ?", (symbol,))
+    holding = cursor.fetchone()
+
+    if holding:
+        holding_id = holding["id"]
+        shares = holding["shares"]
+        purchase_price = holding["purchase_price"]
+        current_price = holding["current_price"] or 0
+
+        # Update dividends_received
+        cursor.execute("""
+            UPDATE holdings
+            SET dividends_received = dividends_received + ?
+            WHERE id = ?
+        """, (total_dividend, holding_id))
+
+        # Recalculate total_value & gain/loss
+        total_value = shares * current_price
+        cost_basis = shares * purchase_price
+
+        # Fetch updated dividends_received
+        cursor.execute("SELECT dividends_received FROM holdings WHERE id = ?", (holding_id,))
+        new_div_received = cursor.fetchone()["dividends_received"]
+
+        gain_loss = (total_value - cost_basis) + new_div_received
+
+        cursor.execute("""
+            UPDATE holdings
+            SET total_value = ?, gain_loss = ?
+            WHERE id = ?
+        """, (total_value, gain_loss, holding_id))
+
+    conn.commit()
+    conn.close()
+
+def process_dividend(symbol, amount_per_share, tax, currency, date):
+    # 1. Insert record
+    add_dividend_record(symbol, amount_per_share, tax, currency, date)
+
+    # 2. Fetch shares held
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT shares FROM holdings WHERE symbol = ?", (symbol,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return False  # no holding found
+
+    shares = row["shares"]
+
+    # 3. Calculate dividend totals
+    gross_div = shares * amount_per_share
+    net_div = gross_div - tax
+
+    # 4. Apply to holdings
+    apply_dividend_to_holding(symbol, net_div)
+
+    return True
+
 
 def get_dividends(symbol=None):
     conn = get_connection()
