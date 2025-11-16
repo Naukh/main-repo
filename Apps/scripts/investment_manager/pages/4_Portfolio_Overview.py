@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from data import (
+from data.db_utils import (
     get_holdings,
     update_holding,
 )
