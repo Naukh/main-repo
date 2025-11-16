@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from data.db_utils import get_holdings, update_holding
+from data.db_utils import get_holdings, update_holding, get_dividends
 
 st.title("📊 Portfolio Overview")
 
@@ -57,7 +57,7 @@ display_df = display_df.drop(columns=[c for c in ["id"] if c in display_df])
 display_df["total_value"] = pd.to_numeric(display_df["total_value"], errors="coerce").fillna(0)
 display_df["gain_loss"] = pd.to_numeric(display_df["gain_loss"], errors="coerce").fillna(0)
 
-st.dataframe(display_df, use_container_width=True)
+st.dataframe(display_df, width="content")
 
 # --- Portfolio Totals ---
 st.subheader("Portfolio Totals")
@@ -72,3 +72,46 @@ col1.metric("Invested", f"{total_invested:,.2f}")
 col2.metric("Current Value", f"{total_value:,.2f}")
 col3.metric("Dividends Received", f"{total_dividends:,.2f}")
 col4.metric("Total Gain/Loss", f"{total_gain_loss:,.2f}")
+
+st.subheader("📜 Dividend History")
+
+# Dropdown to select stock for dividend history
+div_symbol = st.selectbox("Select Stock to View Dividends", symbols, key="dividend_history")
+
+# Fetch dividends for this stock
+div_rows = get_dividends(div_symbol)
+
+if not div_rows:
+    st.info(f"No dividend records found for {div_symbol}.")
+else:
+    # Build a DataFrame for display
+    div_df = pd.DataFrame(div_rows)
+
+    # Ensure numeric columns are properly typed
+    div_df["amount_per_share"] = pd.to_numeric(div_df.get("amount_per_share", 0), errors="coerce").fillna(0)
+    div_df["tax"] = pd.to_numeric(div_df.get("tax", 0), errors="coerce").fillna(0)
+
+    # Calculate net dividend based on shares held
+    # Get shares from holdings table
+    shares_held = df[df["symbol"] == div_symbol]["shares"].values[0]
+    div_df["shares_held"] = shares_held
+    div_df["net_dividend"] = div_df["amount_per_share"] * div_df["shares_held"] - div_df["tax"]
+
+    # Select and rename columns for display
+    display_cols = ["date", "amount_per_share", "tax", "shares_held", "net_dividend", "currency"]
+    div_df = div_df[display_cols]
+
+    div_df = div_df.rename(columns={
+        "date": "Date",
+        "amount_per_share": "Amount/Share",
+        "tax": "Tax",
+        "shares_held": "Shares Held",
+        "net_dividend": "Net Dividend",
+        "currency": "Currency"
+    })
+
+    st.dataframe(div_df, use_container_width=True)
+
+    # Optional: show total net dividend for this stock
+    total_net = div_df["Net Dividend"].sum()
+    st.metric(f"Total Net Dividends for {div_symbol}", f"{total_net:,.2f} {div_df['Currency'].iloc[0]}")
