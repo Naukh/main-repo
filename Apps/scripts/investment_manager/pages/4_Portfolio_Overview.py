@@ -6,120 +6,137 @@ st.title("📊 Portfolio Overview")
 
 # --- Load holdings ---
 holdings = get_holdings()
-
 if not holdings:
-    st.info("No holdings found. Add stocks in the 'Add Stock' page.")
+    st.info("No holdings found.")
     st.stop()
 
-# Convert to DataFrame
 df = pd.DataFrame(holdings)
 
-# Ensure numeric columns are proper dtype
-numeric_cols = ["shares", "purchase_price", "current_price", "total_value", "dividends_received", "gain_loss"]
-for col in numeric_cols:
-    if col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+# Ensure numeric columns exist
+for col in ["shares", "purchase_price", "current_price", "total_value", "gain_loss", "dividends_received"]:
+    df[col] = pd.to_numeric(df.get(col, 0), errors="coerce").fillna(0)
 
-# --- Aggregate multiple purchases per stock ---
-def weighted_avg_price(group):
-    if group["shares"].sum() == 0:
-        return 0
-    return (group["shares"] * group["purchase_price"]).sum() / group["shares"].sum()
+df["currency"] = df.get("currency", "")
 
-agg_df = df.groupby("symbol", as_index=False).agg(
-    shares=("shares", "sum"),
-    purchase_price=("purchase_price", weighted_avg_price),
-    current_price=("current_price", "last"),
-    total_value=("total_value", "sum"),
-    dividends_received=("dividends_received", "sum"),
-    gain_loss=("gain_loss", "sum"),
-    currency=("currency", "first")
+# --- Load dividends ---
+dividends_all = get_dividends()
+div_df = pd.DataFrame(dividends_all) if dividends_all else pd.DataFrame(
+    columns=["id","symbol","holding_id","num_shares","amount_per_share","tax","currency","date"]
 )
 
-# --- Top Section: Update Current Price ---
+# Ensure holding_id exists (migration-safe)
+if "holding_id" not in div_df.columns:
+    div_df["holding_id"] = None
+
+# Fill missing num_shares for old dividends
+holding_shares_map = df.set_index("id")["shares"].to_dict()
+div_df["num_shares"] = div_df.apply(
+    lambda d: d["num_shares"] if pd.notna(d.get("num_shares")) and d["num_shares"] > 0
+    else holding_shares_map.get(d.get("holding_id"), 0),
+    axis=1
+)
+
+# Calculate net dividends
+div_df["net_dividend"] = div_df["num_shares"] * div_df["amount_per_share"] - div_df["tax"]
+
+
+# --- Dividend mapping logic ---
+# 1. Map dividends where holding_id exists
+div_sum_map = div_df[div_df["holding_id"].notna()].groupby("holding_id")["net_dividend"].sum().to_dict()
+
+# 2. Fallback for symbols with missing holding_id
+div_sum_by_symbol = div_df.groupby("symbol")["net_dividend"].sum().to_dict()
+
+# Final mapping:
+df["dividends_received"] = df.apply(
+    lambda row: div_sum_map.get(row["id"]) 
+                if row["id"] in div_sum_map 
+                else div_sum_by_symbol.get(row["symbol"], 0),
+    axis=1
+)
+
+
+# Recalculate total value and gain/loss
+df["total_value"] = df["shares"] * df["current_price"]
+df["gain_loss"] = df["total_value"] - (df["shares"] * df["purchase_price"]) + df["dividends_received"]
+
+# --- Aggregate per symbol ---
+agg_list = []
+
+for symbol, group in df.groupby("symbol"):
+    total_shares = group["shares"].sum()
+    w_avg_price = (group["shares"] * group["purchase_price"]).sum() / total_shares if total_shares > 0 else 0
+    total_value = group["total_value"].sum()
+    total_dividends = group["dividends_received"].sum()   # This will now include dividends even if holding_id missing
+    total_gain_loss = group["gain_loss"].sum()
+    current_price = group["current_price"].iloc[-1] if not group["current_price"].isna().all() else 0
+    currency = group["currency"].iloc[0] if not group["currency"].isna().all() else ""
+    
+    agg_list.append({
+        "symbol": symbol,
+        "shares": total_shares,
+        "purchase_price": w_avg_price,
+        "current_price": current_price,
+        "total_value": total_value,
+        "dividends_received": total_dividends,
+        "gain_loss": total_gain_loss,
+        "currency": currency
+    })
+
+agg_df = pd.DataFrame(agg_list)
+
+
+# --- Update current price ---
 st.subheader("Update Current Stock Price")
-
 symbols = agg_df["symbol"].tolist()
-symbol = st.selectbox("Select Stock", symbols)
-
-# Get aggregated row for selected symbol
-row = agg_df[agg_df["symbol"] == symbol].iloc[0]
-current_price = row["current_price"]
+selected_symbol = st.selectbox("Select Stock", symbols)
+selected_row = agg_df[agg_df["symbol"] == selected_symbol].iloc[0]
 
 new_price = st.number_input(
     "New Current Price",
     min_value=0.0,
-    value=float(current_price),
+    value=float(selected_row["current_price"]),
     format="%.4f"
 )
 
 if st.button("Update Price"):
-    # Update all rows of the same symbol in the DB
-    symbol_rows = df[df["symbol"] == symbol]
-    for _, r in symbol_rows.iterrows():
-        try:
-            update_holding(int(r["id"]), current_price=new_price)
-        except ValueError as e:
-            st.error(str(e))
+    for _, r in df[df["symbol"] == selected_symbol].iterrows():
+        update_holding(r["id"], current_price=new_price)
+    st.success(f"Updated price for {selected_symbol}")
+    st.experimental_rerun()
 
-    st.success(f"Updated current price for {symbol}")
-    st.rerun()
-
-# --- Clean Portfolio Table ---
+# --- Holdings summary ---
 st.subheader("📘 Holdings Summary")
+st.dataframe(agg_df, width="stretch")
 
-display_df = agg_df.copy()
-
-# Fill NaN and ensure numeric
-display_df["total_value"] = pd.to_numeric(display_df["total_value"], errors="coerce").fillna(0)
-display_df["gain_loss"] = pd.to_numeric(display_df["gain_loss"], errors="coerce").fillna(0)
-
-st.dataframe(display_df, width="stretch")
-
-# --- Portfolio Totals ---
+# --- Portfolio totals ---
 st.subheader("Portfolio Totals")
-
-total_invested = (agg_df["shares"] * agg_df["purchase_price"]).sum()
-total_value = agg_df["total_value"].sum()
-total_dividends = agg_df["dividends_received"].sum()
-total_gain_loss = agg_df["gain_loss"].sum()
-
+total_invested = (df["shares"] * df["purchase_price"]).sum()
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Invested", f"{total_invested:,.2f}")
-col2.metric("Current Value", f"{total_value:,.2f}")
-col3.metric("Dividends Received", f"{total_dividends:,.2f}")
-col4.metric("Total Gain/Loss", f"{total_gain_loss:,.2f}")
+col2.metric("Current Value", f"{agg_df['total_value'].sum():,.2f}")
+col3.metric("Dividends Received", f"{agg_df['dividends_received'].sum():,.2f}")
+col4.metric("Total Gain/Loss", f"{agg_df['gain_loss'].sum():,.2f}")
 
-# --- Dividend History Section ---
+# --- Dividend History ---
 st.subheader("📜 Dividend History")
-
 div_symbol = st.selectbox("Select Stock to View Dividends", symbols, key="dividend_history")
-div_rows = get_dividends(div_symbol)
+div_rows = div_df[div_df["symbol"].str.upper() == div_symbol.upper()]
 
-if not div_rows:
-    st.info(f"No dividend records found for {div_symbol}.")
+if not div_rows.empty:
+    display_df = div_rows.copy()
+    display_df = display_df.assign(
+        Shares=display_df["num_shares"],
+        Amount_Per_Share=display_df["amount_per_share"],
+        Tax=display_df["tax"],
+        Net_Dividend=display_df["net_dividend"],
+        Currency=display_df["currency"],
+        Date=display_df["date"]
+    )
+    st.dataframe(display_df[["Date","Amount_Per_Share","Shares","Tax","Net_Dividend","Currency"]], width="stretch")
+    st.metric(
+        f"Total Net Dividends for {div_symbol}",
+        f"{display_df['Net_Dividend'].sum():,.2f} {display_df['Currency'].iloc[0]}"
+    )
 else:
-    div_df = pd.DataFrame(div_rows)
-
-    div_df["amount_per_share"] = pd.to_numeric(div_df.get("amount_per_share", 0), errors="coerce").fillna(0)
-    div_df["tax"] = pd.to_numeric(div_df.get("tax", 0), errors="coerce").fillna(0)
-
-    shares_held = agg_df[agg_df["symbol"] == div_symbol]["shares"].values[0]
-    div_df["shares_held"] = shares_held
-    div_df["net_dividend"] = div_df["amount_per_share"] * div_df["shares_held"] - div_df["tax"]
-
-    display_cols = ["date", "amount_per_share", "tax", "shares_held", "net_dividend", "currency"]
-    div_df = div_df[display_cols]
-
-    div_df = div_df.rename(columns={
-        "date": "Date",
-        "amount_per_share": "Amount/Share",
-        "tax": "Tax",
-        "shares_held": "Shares Held",
-        "net_dividend": "Net Dividend",
-        "currency": "Currency"
-    })
-
-    st.dataframe(div_df, width="stretch")
-    total_net = div_df["Net Dividend"].sum()
-    st.metric(f"Total Net Dividends for {div_symbol}", f"{total_net:,.2f} {div_df['Currency'].iloc[0]}")
+    st.info(f"No dividend records found for {div_symbol}.")

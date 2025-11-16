@@ -1,36 +1,46 @@
 import streamlit as st
-from data import db_utils
+from data.db_utils import get_holdings, update_holding, delete_holding
 
-st.title("Update / Remove Stock")
+st.title("Update / Remove Stock Holdings")
 
-# Fetch all holdings
-holdings = db_utils.get_holdings()
-symbols = [h['symbol'] for h in holdings]
+holdings = get_holdings()
+if not holdings:
+    st.info("No holdings found. Add stocks first.")
+    st.stop()
 
-if not symbols:
-    st.info("No stocks in your portfolio. Add some first!")
+# Unique stock symbols
+symbols = sorted({row["symbol"].upper() for row in holdings})
+selected_symbol = st.selectbox("Select Stock", symbols)
+
+# Get all purchases for this stock
+symbol_rows = [r for r in holdings if r["symbol"].upper() == selected_symbol]
+
+# Optional: let user select specific purchase
+if len(symbol_rows) > 1:
+    purchase_dates = [r["purchase_date"] or "Unknown Date" for r in symbol_rows]
+    selected_date = st.selectbox("Select Purchase Date", purchase_dates)
+    selected_row = symbol_rows[purchase_dates.index(selected_date)]
 else:
-    selected_symbol = st.selectbox("Select Stock to Update", symbols)
-    stock = next((h for h in holdings if h['symbol'] == selected_symbol), None)
+    selected_row = symbol_rows[0]
 
-    if stock:
-        st.subheader(f"Current Info for {stock['symbol']}")
-        st.write(f"Shares: {stock['shares']}")
-        st.write(f"Purchase Price: {stock['purchase_price']} {stock['currency']}")
-        st.write(f"Currency: {stock['currency']}")
+st.write(f"Selected Purchase: {selected_row}")
 
-        with st.form("update_stock_form"):
-            new_shares = st.number_input("Update Number of Shares", min_value=0.0, step=0.01, value=stock['shares'])
-            new_purchase_price = st.number_input("Update Purchase Price", min_value=0.0, step=0.01, value=stock['purchase_price'])
-            new_currency = st.selectbox("Update Currency", ["USD", "SEK", "EUR", "PKR"], index=["USD","SEK","EUR", "PKR"].index(stock['currency']))
+# Update fields
+new_shares = st.number_input("Shares", min_value=0.0, value=selected_row["shares"])
+new_price = st.number_input("Purchase Price", min_value=0.0, value=selected_row["purchase_price"])
+new_currency = st.text_input("Currency", value=selected_row["currency"])
 
-            submitted = st.form_submit_button("Update Stock")
-            if submitted:
-                db_utils.update_holding(stock['id'], shares=new_shares, purchase_price=new_purchase_price, currency=new_currency)
-                st.success(f"{stock['symbol']} updated successfully!")
+if st.button("Update"):
+    update_holding(
+        id=selected_row["id"],
+        shares=new_shares,
+        purchase_price=new_price,
+        currency=new_currency
+    )
+    st.success("Stock purchase updated!")
+    st.rerun()
 
-        st.markdown("---")
-        st.subheader("Remove Stock")
-        if st.button(f"Delete {stock['symbol']} from Portfolio"):
-            db_utils.delete_holding(stock['id'])
-            st.warning(f"{stock['symbol']} removed from portfolio!")
+if st.button("Delete"):
+    delete_holding(selected_row["id"])
+    st.success("Stock purchase deleted!")
+    st.rerun()
