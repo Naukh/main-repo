@@ -62,7 +62,8 @@ if st.button("Update Price"):
     st.success(f"Updated current price for {symbol}")
 
     # Refresh after update
-    st.experimental_rerun()
+    st.rerun()
+
 
 # --- Clean Portfolio Table ---
 st.subheader("📘 Holdings Summary")
