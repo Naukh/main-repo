@@ -1,46 +1,24 @@
 import streamlit as st
-from data.db_utils import get_holdings, update_holding, delete_holding
+from data.db_utils import get_holdings, update_holding_current_price
 
-st.title("Update / Remove Stock Holdings")
+st.title("🛠 Update Stock Details")
 
 holdings = get_holdings()
-if not holdings:
-    st.info("No holdings found. Add stocks first.")
+symbols = [h["symbol"] for h in holdings]
+
+if not symbols:
+    st.info("No stocks to update. Add some first!")
     st.stop()
 
-# Unique stock symbols
-symbols = sorted({row["symbol"].upper() for row in holdings})
-selected_symbol = st.selectbox("Select Stock", symbols)
+selected_symbol = st.selectbox("Select stock to update", symbols)
+holding = next(h for h in holdings if h["symbol"] == selected_symbol)
 
-# Get all purchases for this stock
-symbol_rows = [r for r in holdings if r["symbol"].upper() == selected_symbol]
+# Editable fields
+new_currency = st.selectbox("Currency", ["PKR", "SEK", "USD", "EUR"], index=["PKR","SEK","USD","EUR"].index(holding["currency"]))
+new_notes = st.text_area("Notes", value=holding.get("notes",""))
+current_price = st.number_input("Current Price", min_value=0.0, value=float(holding.get("current_price",0.0)), format="%.2f")
 
-# Optional: let user select specific purchase
-if len(symbol_rows) > 1:
-    purchase_dates = [r["purchase_date"] or "Unknown Date" for r in symbol_rows]
-    selected_date = st.selectbox("Select Purchase Date", purchase_dates)
-    selected_row = symbol_rows[purchase_dates.index(selected_date)]
-else:
-    selected_row = symbol_rows[0]
-
-st.write(f"Selected Purchase: {selected_row}")
-
-# Update fields
-new_shares = st.number_input("Shares", min_value=0.0, value=selected_row["shares"])
-new_price = st.number_input("Purchase Price", min_value=0.0, value=selected_row["purchase_price"])
-new_currency = st.text_input("Currency", value=selected_row["currency"])
-
-if st.button("Update"):
-    update_holding(
-        id=selected_row["id"],
-        shares=new_shares,
-        purchase_price=new_price,
-        currency=new_currency
-    )
-    st.success("Stock purchase updated!")
-    st.rerun()
-
-if st.button("Delete"):
-    delete_holding(selected_row["id"])
-    st.success("Stock purchase deleted!")
-    st.rerun()
+if st.button("Save Changes"):
+    update_holding_current_price(selected_symbol, current_price)
+    # TODO: Add update for currency and notes in DB
+    st.success(f"{selected_symbol} updated successfully.")

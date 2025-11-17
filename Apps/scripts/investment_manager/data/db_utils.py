@@ -1,41 +1,34 @@
+# data/db_utils.py
+
 import sqlite3
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "portfolio.db"
 
+
+# ---------------------------------------------------------
+# connection helper
+# ---------------------------------------------------------
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
-# --- Initialization ---
+
+# ---------------------------------------------------------
+# DATABASE INITIALIZATION
+# ---------------------------------------------------------
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
+
     cursor.executescript("""
     CREATE TABLE IF NOT EXISTS holdings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        symbol TEXT NOT NULL,
-        shares REAL NOT NULL,
-        purchase_price REAL NOT NULL,
-        purchase_date TEXT,
-        currency TEXT NOT NULL,
-        current_price REAL,
-        total_value REAL,
-        dividends_received REAL DEFAULT 0,
-        gain_loss REAL
-    );
-
-    CREATE TABLE IF NOT EXISTS dividends (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        symbol TEXT NOT NULL,
-        holding_id INTEGER,
-        num_shares REAL NOT NULL,
-        amount_per_share REAL NOT NULL,
-        tax REAL DEFAULT 0,
-        currency TEXT DEFAULT '',
-        date TEXT NOT NULL,
-        FOREIGN KEY (holding_id) REFERENCES holdings(id)
+        symbol TEXT NOT NULL UNIQUE,
+        currency TEXT NOT NULL DEFAULT 'USD',
+        notes TEXT,
+        current_price REAL DEFAULT 0.0
     );
 
     CREATE TABLE IF NOT EXISTS transactions (
@@ -47,25 +40,41 @@ def init_db():
         type TEXT NOT NULL CHECK(type IN ('buy','sell'))
     );
 
+    CREATE TABLE IF NOT EXISTS dividends (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        num_shares REAL NOT NULL,
+        amount_per_share REAL NOT NULL,
+        tax REAL DEFAULT 0,
+        gross_amount REAL,
+        net_amount REAL,
+        currency TEXT DEFAULT '',
+        date TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS watchlist (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         symbol TEXT NOT NULL UNIQUE,
         notes TEXT
     );
     """)
+
     conn.commit()
     conn.close()
     print("Database initialized successfully.")
 
 
-# --- Holdings CRUD ---
-def add_holding(symbol, shares, purchase_price, currency, purchase_date=None):
+# ---------------------------------------------------------
+# HOLDINGS CRUD
+# ---------------------------------------------------------
+
+def add_holding(symbol: str, currency="USD", notes=None):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO holdings (symbol, shares, purchase_price, purchase_date, currency)
-        VALUES (?, ?, ?, ?, ?)
-    """, (symbol.upper(), shares, purchase_price, purchase_date, currency.upper()))
+        INSERT OR IGNORE INTO holdings (symbol, currency, notes)
+        VALUES (?, ?, ?)
+    """, (symbol.upper(), currency.upper(), notes))
     conn.commit()
     conn.close()
 
@@ -73,115 +82,207 @@ def add_holding(symbol, shares, purchase_price, currency, purchase_date=None):
 def get_holdings():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM holdings")
+    cursor.execute("SELECT * FROM holdings ORDER BY symbol ASC")
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
-def update_holding(holding_id, **kwargs):
-    if not kwargs:
+def update_holding(symbol: str, currency=None, notes=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    updates = []
+    values = []
+
+    if currency is not None:
+        updates.append("currency=?")
+        values.append(currency.upper())
+
+    if notes is not None:
+        updates.append("notes=?")
+        values.append(notes)
+
+    if not updates:
         return
-    conn = get_connection()
-    cursor = conn.cursor()
-    columns = ", ".join(f"{k}=?" for k in kwargs)
-    values = list(kwargs.values()) + [holding_id]
-    cursor.execute(f"UPDATE holdings SET {columns} WHERE id=?", values)
+
+    values.append(symbol.upper())
+    cursor.execute(f"""
+        UPDATE holdings SET {", ".join(updates)}
+        WHERE symbol=?
+    """, values)
+
     conn.commit()
     conn.close()
 
 
-def delete_holding(holding_id):
+def delete_holding(symbol: str):
+    """Deletes holding but **keeps** transaction history unless user deletes manually."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM holdings WHERE id=?", (holding_id,))
+    cursor.execute("DELETE FROM holdings WHERE symbol=?", (symbol.upper(),))
     conn.commit()
     conn.close()
 
-
-# --- Dividends CRUD ---
-def process_dividend(symbol, amount_per_share, tax=0, currency="", date=None, holding_id=None, num_shares=None):
-    """
-    Insert dividend record.
-    Updates holding's dividends_received, total_value, gain_loss.
-    """
+def update_holding_current_price(symbol: str, price: float) -> bool:
     conn = get_connection()
     cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE holdings SET current_price = ? WHERE symbol = ?",
+            (price, symbol.upper())
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error updating current price: {e}")
+        return False
+    finally:
+        conn.close()
 
-    # Determine num_shares if not provided and holding_id exists
-    if holding_id and num_shares is None:
-        cursor.execute("SELECT shares FROM holdings WHERE id=?", (holding_id,))
-        row = cursor.fetchone()
-        num_shares = row["shares"] if row else 0
-    elif num_shares is None:
-        # Apply to all holdings of symbol if holding_id not specified
-        cursor.execute("SELECT id, shares FROM holdings WHERE symbol=?", (symbol.upper(),))
-        rows = cursor.fetchall()
-        if rows:
-            # Apply to first holding by default if not specified
-            holding_id = rows[0]["id"]
-            num_shares = rows[0]["shares"]
-        else:
-            num_shares = 0
 
-    # Insert dividend record
+
+# ---------------------------------------------------------
+# TRANSACTION CRUD
+# ---------------------------------------------------------
+
+def add_transaction(symbol, shares, price, date, type):
+    conn = get_connection()
+    cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO dividends (symbol, holding_id, num_shares, amount_per_share, tax, currency, date)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (symbol.upper(), holding_id, num_shares, amount_per_share, tax, currency, date))
-    dividend_id = cursor.lastrowid
+        INSERT INTO transactions (symbol, shares, price, date, type)
+        VALUES (?, ?, ?, ?, ?)
+    """, (symbol.upper(), shares, price, date, type))
+    conn.commit()
+    conn.close()
 
-    # Update holding's dividends_received
-    net_div = (num_shares * amount_per_share) - tax
-    if holding_id:
-        cursor.execute("SELECT shares, purchase_price, current_price, dividends_received FROM holdings WHERE id=?", (holding_id,))
-        row = cursor.fetchone()
-        if row:
-            new_div = (row["dividends_received"] or 0) + net_div
-            total_value = (row["shares"] * (row["current_price"] or 0))
-            gain_loss = total_value - (row["shares"] * row["purchase_price"]) + new_div
-            cursor.execute("""
-                UPDATE holdings
-                SET dividends_received=?, total_value=?, gain_loss=?
-                WHERE id=?
-            """, (new_div, total_value, gain_loss, holding_id))
+
+def update_transaction(tx_id: int, symbol: str, tx_type: str, shares: float, price: float, tx_date: str) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            UPDATE transactions
+            SET symbol = ?, type = ?, shares = ?, price = ?, date = ?
+            WHERE id = ?
+            """,
+            (symbol.upper(), tx_type.lower(), shares, price, tx_date, tx_id)
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error updating transaction: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def delete_transaction(tx_id: int) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error deleting transaction: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_transactions(symbol=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if symbol:
+        cursor.execute(
+            "SELECT * FROM transactions WHERE UPPER(symbol)=? ORDER BY date ASC",
+            (symbol.upper(),),
+        )
+    else:
+        cursor.execute("SELECT * FROM transactions ORDER BY date ASC")
+
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------
+# DIVIDENDS CRUD
+# ---------------------------------------------------------
+
+def add_dividend(symbol, num_shares, amount_per_share, tax, currency, date):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    net_amount = (num_shares * amount_per_share) - tax
+    gross_amount = num_shares * amount_per_share
+
+    cursor.execute("""
+        INSERT INTO dividends (symbol, num_shares, amount_per_share, tax, gross_amount, net_amount, currency, date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        symbol.upper(), num_shares, amount_per_share, tax,
+        gross_amount, net_amount,
+        currency.upper() if currency else "",
+        date
+    ))
 
     conn.commit()
     conn.close()
-    return dividend_id
+
+
+
+def delete_dividend(div_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM dividends WHERE id=?", (div_id,))
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
 
 
 def get_dividends(symbol=None):
     conn = get_connection()
     cursor = conn.cursor()
+
     if symbol:
-        cursor.execute("SELECT * FROM dividends WHERE UPPER(symbol)=?", (symbol.upper(),))
+        cursor.execute("""
+            SELECT * FROM dividends
+            WHERE UPPER(symbol)=?
+            ORDER BY date ASC
+        """, (symbol.upper(),))
     else:
-        cursor.execute("SELECT * FROM dividends")
+        cursor.execute("SELECT * FROM dividends ORDER BY date ASC")
+
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
-
-def update_dividend_record(dividend_id, num_shares, amount_per_share, tax, currency, date):
+def update_dividend_record(div_id: int, num_shares, amount_per_share, tax, currency, date):
+    """
+    Update a dividend record by ID.
+    Also updates gross_amount and net_amount automatically.
+    """
     conn = get_connection()
     cursor = conn.cursor()
+
+    gross_amount = num_shares * amount_per_share
+    net_amount = gross_amount - tax
+
     cursor.execute("""
         UPDATE dividends
-        SET num_shares=?, amount_per_share=?, tax=?, currency=?, date=?
+        SET num_shares=?, amount_per_share=?, tax=?, gross_amount=?, net_amount=?, currency=?, date=?
         WHERE id=?
-    """, (num_shares, amount_per_share, tax, currency, str(date), dividend_id))
-    conn.commit()
+    """, (
+        num_shares, amount_per_share, tax, gross_amount, net_amount,
+        currency.upper() if currency else "", date, div_id
+    ))
+
     success = cursor.rowcount > 0
+    conn.commit()
     conn.close()
     return success
-
-
-def delete_dividend(dividend_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM dividends WHERE id=?", (dividend_id,))
-    conn.commit()
-    success = cursor.rowcount > 0
-    conn.close()
-    return success
+# ---------------------------------------------------------
