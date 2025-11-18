@@ -111,7 +111,7 @@ if txs:
             )
             if success:
                 st.success(f"Transaction {selected_id} updated.")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Failed to update transaction.")
 
@@ -126,6 +126,6 @@ if txs:
             if ok:
                 st.success(f"Transaction {selected_id} deleted.")
                 st.session_state[confirm_key] = False
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Delete failed.")

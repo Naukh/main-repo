@@ -285,4 +285,64 @@ def update_dividend_record(div_id: int, num_shares, amount_per_share, tax, curre
     conn.commit()
     conn.close()
     return success
+
+
+# -----------------------------
+# Update stock symbol, currency, notes in holdings
+# -----------------------------
+def update_holding_symbol_currency(stock_id: int, new_symbol: str, new_currency: str, new_notes: str = "") -> bool:
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE holdings
+            SET symbol = ?, currency = ?, notes = ?
+            WHERE id = ?
+        """, (new_symbol, new_currency, new_notes, stock_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print("Error updating stock:", e)
+        return False
+
+
+# -----------------------------
+# Update transaction symbol by transaction ID
+# -----------------------------
+def update_transaction_symbol(tx_id: int, new_symbol: str) -> bool:
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE transactions
+            SET symbol = ?
+            WHERE id = ?
+        """, (new_symbol, tx_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print("Error updating transaction symbol:", e)
+        return False
+
+
+# -----------------------------
+# Update dividend symbol by dividend ID
+# -----------------------------
+def update_dividend_symbol(div_id: int, new_symbol: str) -> bool:
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE dividends
+            SET symbol = ?
+            WHERE id = ?
+        """, (new_symbol, div_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print("Error updating dividend symbol:", e)
+        return False
 # ---------------------------------------------------------
