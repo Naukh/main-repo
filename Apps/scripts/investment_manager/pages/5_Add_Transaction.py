@@ -23,7 +23,7 @@ with st.form("transaction_form"):
 
     symbol = st.selectbox("Select Stock", symbols)
     tx_type = st.radio("Transaction Type", ["buy", "sell"])
-    shares = st.number_input("Number of Shares", min_value=1.0, value=1.0, step=1.0)
+    shares = st.number_input("Number of Shares", min_value=0.001, value=1.000, step=0.001)
     price = st.number_input("Price per Share", min_value=0.01, value=1.0, format="%.4f")
     tx_date = st.date_input("Transaction Date", datetime.today())
 
