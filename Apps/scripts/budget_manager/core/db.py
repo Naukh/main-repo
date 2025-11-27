@@ -138,3 +138,85 @@ def bulk_delete(ids):
     conn.commit()
     conn.close()
     return deleted
+
+
+# -------------------------------
+# Initialize a new month
+# -------------------------------
+def initialize_new_month(new_month: str, carry_budget: bool = False):
+    """
+    Initialize a new month by copying distinct (entry_type, category, subcategory)
+    from the latest existing month.
+
+    - new_month: "YYYY-MM"
+    - carry_budget: if True, copy the previous budgeted values; otherwise budgeted=0.0
+    Returns (success: bool, message: str).
+    """
+    # basic format guard
+    if not isinstance(new_month, str) or len(new_month) != 7 or new_month[4] != "-":
+        return False, "new_month must be a string in YYYY-MM format."
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    # 1) check if month already has entries
+    cur.execute("SELECT COUNT(1) FROM entries WHERE month = ?", (new_month,))
+    if cur.fetchone()[0] > 0:
+        conn.close()
+        return False, f"Month {new_month} already exists in the database."
+
+    # 2) find the most recent existing month in DB
+    cur.execute("SELECT DISTINCT month FROM entries WHERE month IS NOT NULL ORDER BY month DESC LIMIT 1")
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return False, "No existing data found to copy from."
+
+    latest_month = row[0]
+
+    # 3) fetch distinct entry_type/category/subcategory/budgeted from the latest_month
+    #    (this will include incomes such as Salary)
+    cur.execute("""
+        SELECT DISTINCT entry_type, category, subcategory, COALESCE(budgeted, 0.0)
+        FROM entries
+        WHERE month = ?
+    """, (latest_month,))
+    items = cur.fetchall()
+
+    if not items:
+        conn.close()
+        return False, f"No entries found in latest month {latest_month} to copy."
+
+    # 4) Insert new rows for the new month (actual=0.0). Keep entry_type the same.
+    inserted = 0
+    for entry_type, category, subcategory, prev_budgeted in items:
+        # skip if category is None/empty
+        if not category:
+            continue
+
+        budgeted_value = float(prev_budgeted) if carry_budget else 0.0
+
+        cur.execute("""
+            INSERT INTO entries
+            (entry_type, date, month, category, subcategory, description, budgeted, actual, account, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            entry_type,
+            None,                 # date not set for auto-created rows
+            new_month,
+            category,
+            subcategory,
+            "Auto-created from previous month",
+            budgeted_value,
+            0.0,                  # actual reset
+            "",
+            "Initialized automatically"
+        ))
+        inserted += 1
+
+    conn.commit()
+    conn.close()
+    return True, f"Initialized {inserted} rows for month {new_month} (from {latest_month})."
+
+
+
