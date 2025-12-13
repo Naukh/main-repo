@@ -1,7 +1,15 @@
 # pages/2_Update_Stock.py
 
 import streamlit as st
-from data.db_utils import get_holdings, update_holding_symbol_currency, get_transactions, update_transaction_symbol, get_dividends, update_dividend_symbol
+from data.db_utils import  (
+    get_holdings,
+    update_holding_symbol_currency,
+    get_transactions,
+    update_transaction_symbol,
+    get_dividends,
+    update_dividend_symbol,
+    delete_holding
+)
 
 st.title("📝 Update Stock")
 
@@ -18,16 +26,42 @@ holding = next(h for h in holdings if h["symbol"] == selected_symbol)
 
 st.subheader(f"Update {selected_symbol}")
 
-# --- Edit symbol / currency / notes ---
+# --- Edit fields ---
 with st.form("update_stock_form"):
-    new_symbol = st.text_input("Stock Symbol", value=holding["symbol"])
-    new_currency = st.selectbox("Currency", ["PKR", "SEK", "USD", "EUR"], index=["PKR", "SEK", "USD", "EUR"].index(holding["currency"]))
+    new_symbol = st.text_input("Symbol", value=holding["symbol"])
+    new_currency = st.selectbox(
+        "Currency",
+        ["PKR", "SEK", "USD", "EUR"],
+        index=["PKR", "SEK", "USD", "EUR"].index(holding.get("currency", "USD"))
+    )
+    new_asset_type = st.selectbox(
+        "Asset Type",
+        ["stock", "index_fund"],
+        index=["stock", "index_fund"].index(holding.get("asset_type", "stock"))
+    )
+    fund_type_options = ["", "growth", "income"]
+    current_fund_type = holding.get("fund_type") or ""  # fallback if None or missing
+    if current_fund_type not in fund_type_options:
+        current_fund_type = ""  # default to empty if DB has invalid value
+
+    new_fund_type = st.selectbox(
+        "Fund Type (for index funds only)",
+        fund_type_options,
+        index=fund_type_options.index(current_fund_type)
+    )
     new_notes = st.text_area("Notes / Comments (optional)", value=holding.get("notes", ""))
 
     submitted = st.form_submit_button("Update Stock")
     if submitted:
-        # Update holding first
-        success_holding = update_holding_symbol_currency(holding["id"], new_symbol, new_currency, new_notes)
+        # --- Update holding in DB ---
+        success_holding = update_holding_symbol_currency(
+            holding_id=holding["id"],
+            new_symbol=new_symbol,
+            new_currency=new_currency,
+            notes=new_notes,
+            asset_type=new_asset_type,
+            fund_type=new_fund_type
+        )
 
         # Update all transactions with this symbol
         txs = get_transactions()
@@ -49,3 +83,39 @@ with st.form("update_stock_form"):
             st.rerun()
         else:
             st.error("Failed to update all records. Check logs for details.")
+
+
+# Delete a holding/fund
+st.subheader("Remove Stock/Fund from Portfolio")
+
+# List of symbols for selection
+symbols_for_delete = [h["symbol"] for h in holdings]
+selected_to_delete = st.selectbox("Select symbol to remove", symbols_for_delete)
+
+# Preview selected holding
+holding_to_preview = next(h for h in holdings if h["symbol"] == selected_to_delete)
+st.write("### Selected Holding Details")
+st.table({
+    "Attribute": ["Symbol", "Asset Type", "Fund Type", "Currency", "Notes", "Current Price"],
+    "Value": [
+        holding_to_preview.get("symbol", ""),
+        holding_to_preview.get("asset_type", "stock"),
+        holding_to_preview.get("fund_type", ""),
+        holding_to_preview.get("currency", ""),
+        holding_to_preview.get("notes", ""),
+        holding_to_preview.get("current_price", 0.0)
+    ]
+})
+
+# --- Confirmation checkbox ---
+confirm_delete = st.checkbox(f"Confirm deletion of {selected_to_delete}")
+
+# Delete button (only active if checkbox is checked)
+if confirm_delete:
+    if st.button(f"Delete {selected_to_delete} from portfolio"):
+        if delete_holding(selected_to_delete):
+            st.success(f"{selected_to_delete} removed successfully!")
+            st.rerun()
+        else:
+            st.error("Failed to remove holding.")
+

@@ -28,7 +28,9 @@ def init_db():
         symbol TEXT NOT NULL UNIQUE,
         currency TEXT NOT NULL DEFAULT 'USD',
         notes TEXT,
-        current_price REAL DEFAULT 0.0
+        current_price REAL DEFAULT 0.0,
+        asset_type TEXT NOT NULL DEFAULT 'stock',
+        fund_type TEXT
     );
 
     CREATE TABLE IF NOT EXISTS transactions (
@@ -68,15 +70,21 @@ def init_db():
 # HOLDINGS CRUD
 # ---------------------------------------------------------
 
-def add_holding(symbol: str, currency="USD", notes=None):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT OR IGNORE INTO holdings (symbol, currency, notes)
-        VALUES (?, ?, ?)
-    """, (symbol.upper(), currency.upper(), notes))
-    conn.commit()
-    conn.close()
+def add_holding(symbol: str, currency: str = "USD", notes: str = "",
+                current_price: float = 0.0, asset_type: str = "stock", fund_type: str = None):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO holdings (symbol, currency, notes, current_price, asset_type, fund_type)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (symbol, currency, notes, current_price, asset_type, fund_type))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print("Error adding holding:", e)
+        return False
 
 
 def get_holdings():
@@ -116,13 +124,28 @@ def update_holding(symbol: str, currency=None, notes=None):
     conn.close()
 
 
-def delete_holding(symbol: str):
-    """Deletes holding but **keeps** transaction history unless user deletes manually."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM holdings WHERE symbol=?", (symbol.upper(),))
-    conn.commit()
-    conn.close()
+def delete_holding(symbol: str) -> bool:
+    """
+    Delete a stock or fund from portfolio, along with all related transactions and dividends.
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Delete transactions
+        cursor.execute("DELETE FROM transactions WHERE symbol = ?", (symbol,))
+        # Delete dividends
+        cursor.execute("DELETE FROM dividends WHERE symbol = ?", (symbol,))
+        # Delete holding itself
+        cursor.execute("DELETE FROM holdings WHERE symbol = ?", (symbol,))
+
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print("Error deleting holding:", e)
+        return False
+
 
 def update_holding_current_price(symbol: str, price: float) -> bool:
     conn = get_connection()
@@ -288,22 +311,36 @@ def update_dividend_record(div_id: int, num_shares, amount_per_share, tax, curre
 
 
 # -----------------------------
-# Update stock symbol, currency, notes in holdings
+# Update holdings data fields
 # -----------------------------
-def update_holding_symbol_currency(stock_id: int, new_symbol: str, new_currency: str, new_notes: str = "") -> bool:
+def update_holding_symbol_currency(
+    holding_id: int,
+    new_symbol: str,
+    new_currency: str,
+    notes: str = "",
+    asset_type: str = "stock",
+    fund_type: str = ""
+) -> bool:
+    """
+    Update a holding's symbol, currency, notes, asset_type, and fund_type in the database.
+    """
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE holdings
-            SET symbol = ?, currency = ?, notes = ?
+            SET symbol = ?, 
+                currency = ?, 
+                notes = ?, 
+                asset_type = ?, 
+                fund_type = ?
             WHERE id = ?
-        """, (new_symbol, new_currency, new_notes, stock_id))
+        """, (new_symbol.upper(), new_currency, notes, asset_type, fund_type, holding_id))
         conn.commit()
         conn.close()
         return True
     except Exception as e:
-        print("Error updating stock:", e)
+        print("Error updating holding:", e)
         return False
 
 

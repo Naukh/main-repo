@@ -18,7 +18,8 @@ investment_manager/
 │   ├── 4_View_Dividend.py     # View dividend payouts history
 │   ├── 5_Add_Transaction.py   # Buy / sell stock holdings
 │   ├── 6_Portfolio_Overview.py# Overview table: stocks, value, P/L
-│   └── 7_Reports.py           # Charts & analytics (allocation, gain/loss)
+│   ├── 7Add_Index_Fund.py     # To add index funds both growth and income
+│   └── 8_Reports.py           # Charts & analytics (allocation, gain/loss)
 │
 ├── components/
 │   ├── quit_button.py          # Optional: admin-only Quit / Restart

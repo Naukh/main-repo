@@ -51,7 +51,7 @@ def run():
         account = st.text_input("Account", key="add_account")
         notes = st.text_area("Notes", key="add_notes")
 
-        if st.form_submit_button("Save", use_container_width=True):
+        if st.form_submit_button("Save", width="stretch"):
             entry = dict(
                 entry_type=entry_type,
                 date=str(date_input),

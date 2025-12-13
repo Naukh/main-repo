@@ -15,10 +15,10 @@ if not holdings:
     st.stop()
 
 df_holdings = pd.DataFrame(holdings)
-symbols = df_holdings["symbol"].tolist()
 
 # --- Update current price manually ---
 st.subheader("Update Current Price")
+symbols = df_holdings["symbol"].tolist()
 selected_symbol = st.selectbox("Select symbol to update price", symbols)
 current_price_input = st.number_input(
     f"Enter current price for {selected_symbol}",
@@ -26,18 +26,19 @@ current_price_input = st.number_input(
     value=float(df_holdings[df_holdings["symbol"] == selected_symbol]["current_price"].iloc[0]),
     format="%.2f"
 )
-
 if st.button("Update Price"):
     ok = update_holding_current_price(selected_symbol, current_price_input)
     if ok:
         st.success(f"Updated {selected_symbol} price to {current_price_input}")
         df_holdings.loc[df_holdings["symbol"] == selected_symbol, "current_price"] = current_price_input
 
-# --- Compute portfolio summary ---
+# --- Compute full portfolio summary ---
 summaries = []
 for idx, row in df_holdings.iterrows():
     symbol = row["symbol"]
     current_price = row.get("current_price", 0.0)
+    asset_type = row.get("asset_type", "stock")
+    fund_type = row.get("fund_type", "")
 
     # Shares & weighted avg price
     cur_shares = compute_current_shares(symbol)
@@ -62,6 +63,8 @@ for idx, row in df_holdings.iterrows():
 
     summaries.append({
         "symbol": symbol,
+        "asset_type": asset_type,
+        "fund_type": fund_type,
         "shares": cur_shares,
         "weighted_avg_price": weighted_avg_price,
         "cost_basis": cost_basis,
@@ -74,7 +77,7 @@ for idx, row in df_holdings.iterrows():
 
 summary_df = pd.DataFrame(summaries)
 
-# --- Display summary ---
+# --- Display portfolio summary ---
 st.subheader("📘 Holdings Summary")
 st.dataframe(summary_df, width="stretch")
 
@@ -85,4 +88,3 @@ col1.metric("Invested", f"{summary_df['cost_basis'].sum():,.2f}")
 col2.metric("Current Value", f"{summary_df['total_value'].sum():,.2f}")
 col3.metric("Dividends Received", f"{summary_df['dividends'].sum():,.2f}")
 col4.metric("Total ROI", f"{summary_df['total_gain'].sum():,.2f}")
-# ----------------------------
