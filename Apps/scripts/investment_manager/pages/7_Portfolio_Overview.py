@@ -1,4 +1,4 @@
-# pages/6_Portfolio_Overview.py
+# pages/7_Portfolio_Overview.py
 
 import streamlit as st
 import pandas as pd
@@ -68,6 +68,8 @@ for idx, row in df_holdings.iterrows():
     )
 
     dividend_value = total_dividends if show_dividends else 0.0
+    dividend_yield = (dividend_value * 100 / total_value if total_value > 0 else 0.0)
+
 
 
     summaries.append({
@@ -82,7 +84,8 @@ for idx, row in df_holdings.iterrows():
         "total_value": total_value,
         "unrealized_pl": unrealized,
         "dividends": dividend_value,
-        "total_gain": unrealized + dividend_value
+        "total_gain": unrealized + dividend_value,
+        "dividend_yield": dividend_yield
     })
 
 
@@ -102,6 +105,7 @@ display_cols = [
     "total_value",
     "unrealized_pl",
     "dividends",
+    "dividend_yield",
     "total_gain"
 ]
 
@@ -121,4 +125,125 @@ for currency, df_cur in summary_df.groupby("currency"):
     col2.metric("Current Value", f"{df_cur['total_value'].sum():,.2f}")
     col3.metric("Dividends", f"{df_cur['dividends'].sum():,.2f}")
     col4.metric("Total P/L", f"{df_cur['total_gain'].sum():,.2f}")
+
+st.divider()
+st.subheader("💸 Income-Generating Assets")
+
+income_df = summary_df[
+    (summary_df["asset_type"] == "stock") |
+    (
+        (summary_df["asset_type"] == "index_fund") &
+        (summary_df["fund_type"] == "income")
+    )
+]
+
+if not income_df.empty:
+    st.dataframe(
+        income_df[
+            [
+                "symbol",
+                "asset_type",
+                "currency",
+                "total_value",
+                "dividends",
+                "dividend_yield"
+            ]
+        ],
+        width="stretch"
+    )
+else:
+    st.info("No income-generating assets found.")
+
+# --- FX-Normalized Portfolio View ---
+with st.container():
+    st.markdown("---")
+    st.subheader("🌍 FX-Normalized Portfolio (Optional)")
+
+    base_currency = st.selectbox(
+        "Select base currency",
+        options=sorted(summary_df["currency"].unique().tolist()),
+        index=0
+    )
+
+    st.markdown("#### Enter FX rates (to base currency)")
+
+    fx_rates = {}
+    for cur in summary_df["currency"].unique():
+        if cur == base_currency:
+            fx_rates[cur] = 1.0
+            st.write(f"**{cur} → {base_currency}: 1.0 (base)**")
+        else:
+            fx_rates[cur] = st.number_input(
+                f"{cur} → {base_currency}",
+                min_value=0.000001,
+                value=1.0,
+                step=0.01,
+                format="%.6f",
+                key=f"fx_{cur}_to_{base_currency}"
+            )
+
+    fx_df = summary_df.copy()
+    fx_df["fx_rate"] = fx_df["currency"].map(fx_rates)
+
+    for col in ["cost_basis", "total_value", "dividends", "total_gain"]:
+        fx_df[f"{col}_fx"] = fx_df[col] * fx_df["fx_rate"]
+
+    fx_df = summary_df.copy()
+    fx_df["fx_rate"] = fx_df["currency"].map(fx_rates)
+
+    for col in ["cost_basis", "total_value", "dividends", "total_gain"]:
+        fx_df[f"{col}_fx"] = fx_df[col] * fx_df["fx_rate"]
+
+    fx_display_cols = [
+        "symbol",
+        "asset_type",
+        "fund_type",
+        "currency",
+        "shares",
+        "cost_basis_fx",
+        "total_value_fx",
+        "dividends_fx",
+        "total_gain_fx",
+    ]
+
+    fx_display_df = fx_df[fx_display_cols].copy()
+
+    fx_display_df = fx_display_df.rename(columns={
+        "cost_basis_fx": f"Invested ({base_currency})",
+        "total_value_fx": f"Current Value ({base_currency})",
+        "dividends_fx": f"Dividends ({base_currency})",
+        "total_gain_fx": f"Total P/L ({base_currency})",
+    })
+
+    fx_invested = fx_df["cost_basis_fx"].sum()
+    fx_current_value = fx_df["total_value_fx"].sum()
+    fx_dividends = fx_df["dividends_fx"].sum()
+    fx_total_pl = fx_df["total_gain_fx"].sum()
+    fx_roi_pct = (fx_total_pl / fx_invested * 100) if fx_invested else 0.0
+
+
+
+    with st.expander("FX Rates Used"):
+        for cur, rate in fx_rates.items():
+            st.write(f"{cur} → {base_currency}: {rate}")
+
+    show_fx_table = st.checkbox("Show FX-normalized holdings summary", value=True)
+
+    if show_fx_table:
+        st.dataframe(fx_display_df,  width="stretch")
+
+        st.subheader(f"📊 Portfolio Totals ({base_currency})")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        col1.metric("Invested", f"{fx_invested:,.2f}")
+        col2.metric("Current Value", f"{fx_current_value:,.2f}")
+        col3.metric("Dividends", f"{fx_dividends:,.2f}")
+        col4.metric(
+            "Total P/L",
+            f"{fx_total_pl:,.2f}",
+            delta=f"{fx_total_pl:,.2f} [{fx_roi_pct:,.2f}%]",
+            delta_color="normal" if fx_total_pl >= 0 else "inverse",
+        )
+
 

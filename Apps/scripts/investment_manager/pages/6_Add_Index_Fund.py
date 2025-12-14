@@ -1,4 +1,4 @@
-# pages/7_Add_Index_Fund.py
+# pages/6_Add_Index_Fund.py
 import streamlit as st
 from data.db_utils import add_holding
 
