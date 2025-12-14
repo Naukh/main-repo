@@ -5,6 +5,25 @@ import pandas as pd
 from data.db_utils import get_holdings, get_transactions, get_dividends, update_holding_current_price
 from utils.calculations import compute_current_shares, calculate_weighted_avg_price, calculate_total_value, calculate_invested_value
 
+def color_pl(val):
+    if pd.isna(val):
+        return ""
+    if val > 0:
+        return "color: #2ecc71; font-weight: 600;"   # green
+    elif val < 0:
+        return "color: #e74c3c; font-weight: 600;"   # red
+    return ""
+
+def color_pct(val):
+    if pd.isna(val):
+        return ""
+    if val > 0:
+        return "color: #2ecc71;"
+    elif val < 0:
+        return "color: #e74c3c;"
+    return ""
+
+
 st.set_page_config(page_title="Portfolio Overview", layout="wide")
 st.title("📊 Portfolio Overview")
 
@@ -109,10 +128,20 @@ display_cols = [
     "total_gain"
 ]
 
-st.dataframe(
-    summary_df[display_cols],
-    width="stretch"
+styled_summary = (
+    summary_df[display_cols]
+    .style
+    .map(color_pl, subset=["unrealized_pl", "total_gain"])
+    .map(color_pct, subset=["dividend_yield"])
+    .format({
+        "dividend_yield": "{:.2f}%",
+        "unrealized_pl": "{:,.2f}",
+        "total_gain": "{:,.2f}",
+    })
 )
+
+st.dataframe(styled_summary, width="stretch")
+
 
 # --- Portfolio totals ---
 st.subheader("📊 Portfolio Totals by Currency")
@@ -138,7 +167,7 @@ income_df = summary_df[
 ]
 
 if not income_df.empty:
-    st.dataframe(
+    styled_income = (
         income_df[
             [
                 "symbol",
@@ -148,9 +177,18 @@ if not income_df.empty:
                 "dividends",
                 "dividend_yield"
             ]
-        ],
-        width="stretch"
+        ]
+        .style
+        .map(color_pl, subset=["dividends"])
+        .map(color_pct, subset=["dividend_yield"])
+        .format({
+            "dividend_yield": "{:.2f}%",
+            "dividends": "{:,.2f}",
+        })
     )
+
+    st.dataframe(styled_income, width="stretch")
+
 else:
     st.info("No income-generating assets found.")
 
@@ -230,7 +268,22 @@ with st.container():
     show_fx_table = st.checkbox("Show FX-normalized holdings summary", value=True)
 
     if show_fx_table:
-        st.dataframe(fx_display_df,  width="stretch")
+        pl_col = f"Total P/L ({base_currency})"
+
+        styled_fx = (
+            fx_display_df
+            .style
+            .map(color_pl, subset=[pl_col])
+            .format({
+                f"Invested ({base_currency})": "{:,.2f}",
+                f"Current Value ({base_currency})": "{:,.2f}",
+                f"Dividends ({base_currency})": "{:,.2f}",
+                f"Total P/L ({base_currency})": "{:,.2f}",
+            })
+        )
+
+        st.dataframe(styled_fx, width="stretch")
+
 
         st.subheader(f"📊 Portfolio Totals ({base_currency})")
 
