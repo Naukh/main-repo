@@ -39,6 +39,8 @@ for idx, row in df_holdings.iterrows():
     current_price = row.get("current_price", 0.0)
     asset_type = row.get("asset_type", "stock")
     fund_type = row.get("fund_type", "")
+    currency = row.get("currency", "USD")
+
 
     # Shares & weighted avg price
     cur_shares = compute_current_shares(symbol)
@@ -60,31 +62,63 @@ for idx, row in df_holdings.iterrows():
     total_value = calculate_total_value(cur_shares, current_price)
     unrealized = total_value - cost_basis
     total_gain = unrealized + total_dividends
+    show_dividends = (
+        asset_type == "stock"
+        or (asset_type == "index_fund" and fund_type == "income")
+    )
+
+    dividend_value = total_dividends if show_dividends else 0.0
+
 
     summaries.append({
         "symbol": symbol,
         "asset_type": asset_type,
         "fund_type": fund_type,
+        "currency": currency,
         "shares": cur_shares,
         "weighted_avg_price": weighted_avg_price,
         "cost_basis": cost_basis,
         "current_price": current_price,
         "total_value": total_value,
         "unrealized_pl": unrealized,
-        "dividends": total_dividends,
-        "total_gain": total_gain
+        "dividends": dividend_value,
+        "total_gain": unrealized + dividend_value
     })
+
 
 summary_df = pd.DataFrame(summaries)
 
 # --- Display portfolio summary ---
 st.subheader("📘 Holdings Summary")
-st.dataframe(summary_df, width="stretch")
+display_cols = [
+    "symbol",
+    "asset_type",
+    "fund_type",
+    "currency",
+    "shares",
+    "weighted_avg_price",
+    "cost_basis",
+    "current_price",
+    "total_value",
+    "unrealized_pl",
+    "dividends",
+    "total_gain"
+]
+
+st.dataframe(
+    summary_df[display_cols],
+    width="stretch"
+)
 
 # --- Portfolio totals ---
-st.subheader("Portfolio Totals")
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Invested", f"{summary_df['cost_basis'].sum():,.2f}")
-col2.metric("Current Value", f"{summary_df['total_value'].sum():,.2f}")
-col3.metric("Dividends Received", f"{summary_df['dividends'].sum():,.2f}")
-col4.metric("Total ROI", f"{summary_df['total_gain'].sum():,.2f}")
+st.subheader("📊 Portfolio Totals by Currency")
+
+for currency, df_cur in summary_df.groupby("currency"):
+    st.markdown(f"### {currency}")
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Invested", f"{df_cur['cost_basis'].sum():,.2f}")
+    col2.metric("Current Value", f"{df_cur['total_value'].sum():,.2f}")
+    col3.metric("Dividends", f"{df_cur['dividends'].sum():,.2f}")
+    col4.metric("Total P/L", f"{df_cur['total_gain'].sum():,.2f}")
+
