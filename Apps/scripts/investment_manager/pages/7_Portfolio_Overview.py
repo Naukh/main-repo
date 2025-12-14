@@ -81,6 +81,8 @@ for idx, row in df_holdings.iterrows():
     total_value = calculate_total_value(cur_shares, current_price)
     unrealized = total_value - cost_basis
     total_gain = unrealized + total_dividends
+    roi_pct = (total_gain / cost_basis * 100) if cost_basis > 0 else 0.0
+
     show_dividends = (
         asset_type == "stock"
         or (asset_type == "index_fund" and fund_type == "income")
@@ -104,6 +106,7 @@ for idx, row in df_holdings.iterrows():
         "unrealized_pl": unrealized,
         "dividends": dividend_value,
         "total_gain": unrealized + dividend_value,
+        "roi_pct": roi_pct,
         "dividend_yield": dividend_yield
     })
 
@@ -125,6 +128,7 @@ display_cols = [
     "unrealized_pl",
     "dividends",
     "dividend_yield",
+    "roi_pct",
     "total_gain"
 ]
 
@@ -132,9 +136,10 @@ styled_summary = (
     summary_df[display_cols]
     .style
     .map(color_pl, subset=["unrealized_pl", "total_gain"])
-    .map(color_pct, subset=["dividend_yield"])
+    .map(color_pct, subset=["dividend_yield", "roi_pct"])
     .format({
         "dividend_yield": "{:.2f}%",
+        "roi_pct": "{:.2f}%",
         "unrealized_pl": "{:,.2f}",
         "total_gain": "{:,.2f}",
     })
@@ -175,14 +180,16 @@ if not income_df.empty:
                 "currency",
                 "total_value",
                 "dividends",
-                "dividend_yield"
+                "dividend_yield",
+                "roi_pct",
             ]
         ]
         .style
         .map(color_pl, subset=["dividends"])
-        .map(color_pct, subset=["dividend_yield"])
+        .map(color_pct, subset=["dividend_yield", "roi_pct"])
         .format({
             "dividend_yield": "{:.2f}%",
+            "roi_pct": "{:.2f}%",
             "dividends": "{:,.2f}",
         })
     )
@@ -226,11 +233,9 @@ with st.container():
     for col in ["cost_basis", "total_value", "dividends", "total_gain"]:
         fx_df[f"{col}_fx"] = fx_df[col] * fx_df["fx_rate"]
 
-    fx_df = summary_df.copy()
-    fx_df["fx_rate"] = fx_df["currency"].map(fx_rates)
-
-    for col in ["cost_basis", "total_value", "dividends", "total_gain"]:
-        fx_df[f"{col}_fx"] = fx_df[col] * fx_df["fx_rate"]
+    fx_df["roi_pct_fx"] = (
+        fx_df["total_gain_fx"] / fx_df["cost_basis_fx"] * 100
+    ).where(fx_df["cost_basis_fx"] > 0, 0.0)
 
     fx_display_cols = [
         "symbol",
@@ -241,6 +246,7 @@ with st.container():
         "cost_basis_fx",
         "total_value_fx",
         "dividends_fx",
+        "roi_pct_fx",
         "total_gain_fx",
     ]
 
@@ -250,6 +256,7 @@ with st.container():
         "cost_basis_fx": f"Invested ({base_currency})",
         "total_value_fx": f"Current Value ({base_currency})",
         "dividends_fx": f"Dividends ({base_currency})",
+        "roi_pct_fx": f"ROI % ({base_currency})",
         "total_gain_fx": f"Total P/L ({base_currency})",
     })
 
@@ -269,16 +276,19 @@ with st.container():
 
     if show_fx_table:
         pl_col = f"Total P/L ({base_currency})"
+        roi_col = f"ROI % ({base_currency})"
 
         styled_fx = (
             fx_display_df
             .style
             .map(color_pl, subset=[pl_col])
+            .map(color_pct, subset=[roi_col])
             .format({
                 f"Invested ({base_currency})": "{:,.2f}",
                 f"Current Value ({base_currency})": "{:,.2f}",
                 f"Dividends ({base_currency})": "{:,.2f}",
                 f"Total P/L ({base_currency})": "{:,.2f}",
+                roi_col: "{:.2f}%",
             })
         )
 
