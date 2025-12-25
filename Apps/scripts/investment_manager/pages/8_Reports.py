@@ -2,6 +2,7 @@
 
 import streamlit as st
 import pandas as pd
+import io
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -277,6 +278,7 @@ with tabs[0]:
         "total_gain_fx": f"Total P/L ({base_currency})"
     })
     fx_display_df[f"ROI% ({base_currency})"] = fx_df["total_gain_fx"] / fx_df["invested_fx"] * 100
+    st.session_state.fx_display_df = fx_display_df
 
     styled_fx = (
         fx_display_df
@@ -378,6 +380,7 @@ with tabs[1]:
             "total_dividend": "Dividend (Original Currency)",
             "total_dividend_fx": f"Dividend ({base_currency})"
         }, inplace=True)
+        st.session_state.income_display_df = income_display_df
 
         styled_income = (
             income_display_df
@@ -471,6 +474,7 @@ with tabs[2]:
     alloc_df = summary_df.copy()
     alloc_df["fx_rate"] = alloc_df["currency"].map(fx_rates).fillna(1.0)
     alloc_df["total_value_fx"] = alloc_df["total_value"] * alloc_df["fx_rate"]
+    st.session_state.alloc_df = alloc_df
 
     total_value_fx = alloc_df["total_value_fx"].sum()
     if total_value_fx == 0:
@@ -753,6 +757,7 @@ with tabs[3]:
             "price_fx": f"Price ({base_currency})",
             "total_value_fx": f"Total Value ({base_currency})"
         }, inplace=True)
+        st.session_state.filtered_tx_display = filtered_tx_display
 
         st.dataframe(
             filtered_tx_display.style.format({
@@ -772,3 +777,79 @@ with tabs[3]:
             mime="text/csv"
         )
 
+# Consolidate report
+st.markdown("---")
+st.subheader("📥 Download Full Portfolio Report (HTML)")
+
+# --- User chooses HTML theme ---
+html_theme = st.radio("Select HTML Report Theme", options=["Light", "Dark"], horizontal=True)
+
+# CSS styles for tables
+css_light = """
+<style>
+body { font-family: Arial, sans-serif; background-color: #fff; color: #000; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background-color: #f2f2f2; }
+</style>
+"""
+
+css_dark = """
+<style>
+body { font-family: Arial, sans-serif; background-color: #121212; color: #eee; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+th, td { border: 1px solid #444; padding: 8px; text-align: left; }
+th { background-color: #1f1f1f; }
+tr:nth-child(even) { background-color: #1a1a1a; }
+</style>
+"""
+
+
+if st.button("Generate & Download HTML Report"):
+
+    html_buffer = io.StringIO()
+    html_buffer.write("<html><head><title>Portfolio Report</title>")
+
+    # Apply chosen theme
+    html_buffer.write(css_dark if html_theme=="Dark" else css_light)
+    html_buffer.write("</head><body>")
+    html_buffer.write(f"<h1>Portfolio Report - {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}</h1>")
+
+    # --- Performance ---
+    if 'fx_display_df' in st.session_state and not st.session_state.fx_display_df.empty:
+        html_buffer.write("<h2>📈 Performance</h2>")
+        html_buffer.write(st.session_state.fx_display_df.to_html(index=False, float_format="%.2f"))
+    else:
+        html_buffer.write("<h2>📈 Performance</h2><p>No performance data available.</p>")
+
+    # --- Income ---
+    if 'income_display_df' in st.session_state and not st.session_state.income_display_df.empty:
+        html_buffer.write("<h2>💸 Income / Dividends</h2>")
+        html_buffer.write(st.session_state.income_display_df.to_html(index=False, float_format="%.2f"))
+    else:
+        html_buffer.write("<h2>💸 Income / Dividends</h2><p>No income data available.</p>")
+
+    # --- Allocation ---
+    if 'alloc_df' in st.session_state and not st.session_state.alloc_df.empty:
+        html_buffer.write("<h2>📊 Allocation</h2>")
+        html_buffer.write(st.session_state.alloc_df.to_html(index=False, float_format="%.2f"))
+    else:
+        html_buffer.write("<h2>📊 Allocation</h2><p>No allocation data available.</p>")
+
+    # --- Transactions ---
+    if 'filtered_tx_display' in st.session_state and not st.session_state.filtered_tx_display.empty:
+        html_buffer.write("<h2>🧾 Transactions</h2>")
+        html_buffer.write(st.session_state.filtered_tx_display.to_html(index=False, float_format="%.2f"))
+    else:
+        html_buffer.write("<h2>🧾 Transactions</h2><p>No transaction data available or filters not applied.</p>")
+
+    html_buffer.write("</body></html>")
+
+    html_data = html_buffer.getvalue().encode("utf-8")
+
+    st.download_button(
+        label="Download Full Report (HTML)",
+        data=html_data,
+        file_name=f"portfolio_report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.html",
+        mime="text/html"
+    )
