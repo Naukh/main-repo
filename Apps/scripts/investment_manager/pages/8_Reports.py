@@ -3,13 +3,13 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
 from data.db_utils import get_holdings, get_transactions, get_dividends
 from utils.calculations import compute_current_shares, calculate_weighted_avg_price, calculate_total_value, calculate_invested_value
 from utils.portfolio_summary import build_portfolio_summary
 
 # Helper functions
-import plotly.express as px
 
 def render_allocation_chart(
     df,
@@ -51,6 +51,80 @@ def render_allocation_chart(
 
     st.plotly_chart(fig, width="stretch")
 
+def render_rebalance(df, category_col, value_col, title, total_value_fx, primary_color="#4F8BF9"):
+    """
+    df: DataFrame with columns [category_col, value_col]
+    category_col: column to group by (e.g., "asset_type", "currency", "fund_type")
+    value_col: column with FX-normalized total values
+    title: title for chart
+    total_value_fx: total portfolio value (FX-normalized)
+    primary_color: main chart color
+    """
+    categories = df[category_col].unique()
+    current_alloc = df.groupby(category_col, as_index=False)[value_col].sum()
+    current_alloc["allocation_pct"] = current_alloc[value_col] / total_value_fx * 100
+
+    st.markdown(f"### 🎯 Set Target Allocation: {title}")
+    target_alloc = {}
+    for cat in categories:
+        current_pct = current_alloc.loc[current_alloc[category_col]==cat, "allocation_pct"].values[0]
+        target_alloc[cat] = st.number_input(
+            f"{cat} target allocation (%)",
+            min_value=0.0,
+            max_value=100.0,
+            value=float(current_pct),
+            step=1.0,
+            format="%.1f",
+            key=f"target_{title}_{cat}"
+        )
+
+    # Compute rebalancing suggestions
+    current_alloc["target_pct"] = current_alloc[category_col].map(target_alloc)
+    current_alloc["diff_pct"] = current_alloc["target_pct"] - current_alloc["allocation_pct"]
+    current_alloc["diff_value"] = current_alloc["diff_pct"] / 100 * total_value_fx
+
+    def action_label(val):
+        if val > 0: return "🟢 Add"
+        elif val < 0: return "🔴 Reduce"
+        else: return "⚪ None"
+
+    current_alloc["action"] = current_alloc["diff_value"].apply(action_label)
+    current_alloc["diff_value"] = current_alloc["diff_value"].abs()
+
+    # Display table
+    st.dataframe(
+        current_alloc[[category_col, "allocation_pct", "target_pct", "diff_pct", "diff_value", "action"]]
+        .style.format({
+            "allocation_pct": "{:.2f}%",
+            "target_pct": "{:.2f}%",
+            "diff_pct": "{:.2f}%",
+            "diff_value": "{:,.2f}"
+        }),
+        width="stretch"
+    )
+
+    # Display chart
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=current_alloc[category_col],
+        y=current_alloc["allocation_pct"],
+        name="Current",
+        marker_color=primary_color
+    ))
+    fig.add_trace(go.Bar(
+        x=current_alloc[category_col],
+        y=current_alloc["target_pct"],
+        name="Target",
+        marker_color="#f39c12"
+    ))
+    fig.update_layout(
+        barmode="group",
+        title=title,
+        yaxis=dict(title="Allocation %", range=[0, max(current_alloc[["allocation_pct","target_pct"]].max())*1.2]),
+        height=450,
+        margin=dict(t=60, b=40, l=40, r=20)
+    )
+    st.plotly_chart(fig, width="stretch")
 
 
 summary_df = build_portfolio_summary()
@@ -426,6 +500,20 @@ with tabs[2]:
         color_palette=color_palette
     )
 
+    # Rebalancing
+    with st.expander("🎯 Set Target Allocation by Asset Type"):
+        render_rebalance(
+            alloc_df, 
+            category_col="asset_type", 
+            value_col="total_value_fx", 
+            title="Asset Type Allocation", 
+            total_value_fx=total_value_fx,
+            primary_color="#4F8BF9"
+        )
+
+
+
+
     # =========================
     # Allocation by Currency
     # =========================
@@ -463,6 +551,17 @@ with tabs[2]:
         chart_type=currency_chart_type,
         color_palette=color_palette
     )
+
+    # Rebalancing
+    with st.expander("🎯 Set Target Allocation by Currency"):
+        render_rebalance(
+            alloc_df, 
+            category_col="currency", 
+            value_col="total_value_fx", 
+            title="Currency Allocation", 
+            total_value_fx=total_value_fx,
+            primary_color="#27ae60"
+        )
 
 
 
@@ -506,6 +605,17 @@ with tabs[2]:
             chart_type=fund_chart_type,
             color_palette=color_palette
         )
+
+        # Rebalancing
+        with st.expander("🎯 Set Target Allocation by Index funds"):
+            render_rebalance(
+                fund_df, 
+                category_col="fund_type", 
+                value_col="total_value_fx", 
+                title="Fund Type Allocation", 
+                total_value_fx=total_value_fx,
+                primary_color="#e74c3c"
+            )
     else:
         st.info("No index funds in portfolio.")
 
