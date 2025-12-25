@@ -51,15 +51,20 @@ def render_allocation_chart(
 
     st.plotly_chart(fig, width="stretch")
 
-def render_rebalance(df, category_col, value_col, title, total_value_fx, primary_color="#4F8BF9"):
+import plotly.graph_objects as go
+
+def render_rebalance(df, category_col, value_col, title, total_value_fx, 
+                     primary_color="#4F8BF9", chart_type="Bar"):
     """
     df: DataFrame with columns [category_col, value_col]
     category_col: column to group by (e.g., "asset_type", "currency", "fund_type")
     value_col: column with FX-normalized total values
-    title: title for chart
+    title: chart/table title
     total_value_fx: total portfolio value (FX-normalized)
     primary_color: main chart color
+    chart_type: "Bar" or "Pie"
     """
+
     categories = df[category_col].unique()
     current_alloc = df.groupby(category_col, as_index=False)[value_col].sum()
     current_alloc["allocation_pct"] = current_alloc[value_col] / total_value_fx * 100
@@ -78,7 +83,7 @@ def render_rebalance(df, category_col, value_col, title, total_value_fx, primary
             key=f"target_{title}_{cat}"
         )
 
-    # Compute rebalancing suggestions
+    # Compute rebalancing
     current_alloc["target_pct"] = current_alloc[category_col].map(target_alloc)
     current_alloc["diff_pct"] = current_alloc["target_pct"] - current_alloc["allocation_pct"]
     current_alloc["diff_value"] = current_alloc["diff_pct"] / 100 * total_value_fx
@@ -104,26 +109,36 @@ def render_rebalance(df, category_col, value_col, title, total_value_fx, primary
     )
 
     # Display chart
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=current_alloc[category_col],
-        y=current_alloc["allocation_pct"],
-        name="Current",
-        marker_color=primary_color
-    ))
-    fig.add_trace(go.Bar(
-        x=current_alloc[category_col],
-        y=current_alloc["target_pct"],
-        name="Target",
-        marker_color="#f39c12"
-    ))
-    fig.update_layout(
-        barmode="group",
-        title=title,
-        yaxis=dict(title="Allocation %", range=[0, max(current_alloc[["allocation_pct","target_pct"]].max())*1.2]),
-        height=450,
-        margin=dict(t=60, b=40, l=40, r=20)
-    )
+    if chart_type == "Pie":
+        fig = go.Figure(go.Pie(
+            labels=current_alloc[category_col],
+            values=current_alloc["target_pct"],
+            hole=0.4,
+            marker_colors=[primary_color]*len(current_alloc)
+        ))
+        fig.update_layout(title=title, height=450, margin=dict(t=60, b=40, l=20, r=20))
+    else:  # Bar chart
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=current_alloc[category_col],
+            y=current_alloc["allocation_pct"],
+            name="Current",
+            marker_color=primary_color
+        ))
+        fig.add_trace(go.Bar(
+            x=current_alloc[category_col],
+            y=current_alloc["target_pct"],
+            name="Target",
+            marker_color="#f39c12"
+        ))
+        fig.update_layout(
+            barmode="group",
+            title=title,
+            yaxis=dict(title="Allocation %", range=[0, max(current_alloc[["allocation_pct","target_pct"]].max())*1.2]),
+            height=450,
+            margin=dict(t=60, b=40, l=40, r=20)
+        )
+
     st.plotly_chart(fig, width="stretch")
 
 
@@ -501,14 +516,21 @@ with tabs[2]:
     )
 
     # Rebalancing
-    with st.expander("🎯 Set Target Allocation by Asset Type"):
+    with st.expander("🎯 Target Allocation by Asset Type"):
+        asset_chart_type = st.radio(
+            "Asset Allocation Chart Type",
+            options=["Bar", "Pie"],
+            horizontal=True,
+            key="chart_type_asset"
+        )
         render_rebalance(
             alloc_df, 
             category_col="asset_type", 
             value_col="total_value_fx", 
             title="Asset Type Allocation", 
             total_value_fx=total_value_fx,
-            primary_color="#4F8BF9"
+            primary_color="#4F8BF9",
+            chart_type=asset_chart_type
         )
 
 
@@ -553,14 +575,21 @@ with tabs[2]:
     )
 
     # Rebalancing
-    with st.expander("🎯 Set Target Allocation by Currency"):
+    with st.expander("🎯 Target Allocation by Currency"):
+        currency_chart_type = st.radio(
+            "Currency Allocation Chart Type",
+            options=["Bar", "Pie"],
+            horizontal=True,
+            key="chart_type_currency"
+        )
         render_rebalance(
             alloc_df, 
             category_col="currency", 
             value_col="total_value_fx", 
             title="Currency Allocation", 
             total_value_fx=total_value_fx,
-            primary_color="#27ae60"
+            primary_color="#27ae60",
+            chart_type=currency_chart_type
         )
 
 
@@ -607,14 +636,21 @@ with tabs[2]:
         )
 
         # Rebalancing
-        with st.expander("🎯 Set Target Allocation by Index funds"):
+        with st.expander("🎯 Target Allocation by Index funds"):
+            fund_chart_type = st.radio(
+                "Fund Allocation Chart Type",
+                options=["Bar", "Pie"],
+                horizontal=True,
+                key="chart_type_fund"
+            )
             render_rebalance(
                 fund_df, 
                 category_col="fund_type", 
                 value_col="total_value_fx", 
                 title="Fund Type Allocation", 
                 total_value_fx=total_value_fx,
-                primary_color="#e74c3c"
+                primary_color="#e74c3c",
+                chart_type=fund_chart_type
             )
     else:
         st.info("No index funds in portfolio.")
@@ -625,4 +661,114 @@ with tabs[2]:
 # -----------------------------
 with tabs[3]:
     st.subheader("🧾 Transaction Report")
-    st.info("Filtered transaction history and exports will appear here.")
+
+    # --- Load transactions ---
+    all_txs = []
+    for h in df_holdings.itertuples():
+        txs = get_transactions(h.symbol)
+        if txs:
+            df_tx = pd.DataFrame(txs)
+            df_tx["currency"] = h.currency
+            df_tx["asset_type"] = h.asset_type
+            df_tx["fund_type"] = h.fund_type
+            all_txs.append(df_tx)
+
+    if not all_txs:
+        st.info("No transactions recorded yet.")
+        st.stop()
+
+    tx_df = pd.concat(all_txs, ignore_index=True)
+    tx_df["date"] = pd.to_datetime(tx_df["date"])
+    tx_df.sort_values("date", inplace=True)
+
+    # --- Filters ---
+    symbols = sorted(tx_df["symbol"].unique())
+    selected_symbols = st.multiselect("Filter by symbol", options=symbols, default=symbols)
+
+    # --- Date Range ---
+    min_date = tx_df["date"].min()
+    max_date = pd.Timestamp.today()
+
+    date_options = ["All Dates", "Custom Range"]
+    selected_date_option = st.selectbox("Choose a date range", options=date_options, index=0)
+
+    if selected_date_option == "All Dates":
+        start_date, end_date = min_date, max_date
+    else:
+        date_range = st.date_input("Date Range", value=(min_date, max_date), min_value=min_date, max_value=max_date)
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            start_date, end_date = date_range
+        else:
+            start_date, end_date = min_date, max_date  # fallback
+
+    # --- FX inputs outside button ---
+    st.subheader("🌍 FX Normalization (Optional)")
+    base_currency = st.selectbox(
+        "Select base currency",
+        options=sorted(tx_df["currency"].unique()),
+        index=0,
+        key="tx_fx_base_currency"
+    )
+
+    st.markdown("#### Enter FX rates to convert to base currency")
+    fx_rates = {}
+    for cur in sorted(tx_df["currency"].unique()):
+        fx_rates[cur] = 1.0 if cur == base_currency else st.number_input(
+            f"{cur} → {base_currency}",
+            min_value=0.000001,
+            value=1.0,
+            step=0.01,
+            format="%.6f",
+            key=f"tx_fx_{cur}_to_{base_currency}"
+        )
+
+    # --- Apply Filters Button ---
+    if st.button("Apply Filters"):
+        # Ensure valid date range
+        if start_date > end_date:
+            st.warning("⚠️ Start date cannot be after end date.")
+            st.stop()
+
+        # Filter transactions
+        filtered_tx = tx_df[
+            (tx_df["symbol"].isin(selected_symbols)) &
+            (tx_df["date"] >= pd.to_datetime(start_date)) &
+            (tx_df["date"] <= pd.to_datetime(end_date))
+        ].copy()
+
+        if filtered_tx.empty:
+            st.info("No transactions found for the selected filters.")
+            st.stop()
+
+        # --- Apply FX ---
+        filtered_tx["fx_rate"] = filtered_tx["currency"].map(fx_rates)
+        filtered_tx["price_fx"] = filtered_tx["price"] * filtered_tx["fx_rate"]
+        filtered_tx["total_value_fx"] = filtered_tx["shares"] * filtered_tx["price_fx"]
+
+        # --- Display table ---
+        display_cols = ["date", "symbol", "asset_type", "fund_type", "shares", "price", "currency", "price_fx", "total_value_fx", "type"]
+        filtered_tx_display = filtered_tx[display_cols].copy()
+        filtered_tx_display.rename(columns={
+            "price": "Price (Original Currency)",
+            "price_fx": f"Price ({base_currency})",
+            "total_value_fx": f"Total Value ({base_currency})"
+        }, inplace=True)
+
+        st.dataframe(
+            filtered_tx_display.style.format({
+                "Price (Original Currency)": "{:,.2f}",
+                f"Price ({base_currency})": "{:,.2f}",
+                f"Total Value ({base_currency})": "{:,.2f}"
+            }),
+            width="stretch"
+        )
+
+        # --- Download option ---
+        csv = filtered_tx_display.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download filtered transactions as CSV",
+            data=csv,
+            file_name=f"transactions_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
+
