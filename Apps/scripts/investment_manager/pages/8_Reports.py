@@ -10,6 +10,7 @@ import plotly.io as pio
 from data.db_utils import get_holdings, get_transactions, get_dividends
 from utils.calculations import compute_current_shares, calculate_weighted_avg_price, calculate_total_value, calculate_invested_value
 from utils.portfolio_summary import build_portfolio_summary
+from utils.fx_rates import get_fx_rates_cached
 
 # Helper functions
 
@@ -227,20 +228,36 @@ with tabs[0]:
         index=0
     )
 
+    # --- Auto-fetch FX rates ---
+    currencies = perf_df["currency"].unique().tolist()
+    fx_rates_auto = get_fx_rates_cached(
+        base_currency=base_currency,
+        currencies=currencies
+    )
+
+
+    st.caption("Auto-fetched FX rates")
+
     fx_rates = {}
-    for cur in perf_df["currency"].unique():
+    for cur in currencies:
+        if cur != base_currency and fx_rates_auto.get(cur) == 1.0:
+            st.caption(f"⚠️ Auto FX unavailable for {cur}, using 1.0")
+
         if cur == base_currency:
             fx_rates[cur] = 1.0
             st.write(f"**{cur} → {base_currency}: 1.0 (base)**")
         else:
             fx_rates[cur] = st.number_input(
                 f"{cur} → {base_currency}",
+                value=float(fx_rates_auto.get(cur)),
                 min_value=0.000001,
-                value=1.0,
-                step=0.01,
+                step=0.0001,
                 format="%.6f",
-                key=f"fx_{cur}_to_{base_currency}"
+                key=f"perf_fx_{cur}_to_{base_currency}"
             )
+
+    # Persist rates for HTML report
+    st.session_state.fx_rates_performance = fx_rates
 
     fx_df = perf_df.copy()
     fx_df["fx_rate"] = fx_df["currency"].map(fx_rates)
@@ -351,16 +368,29 @@ with tabs[1]:
         )
 
         st.markdown("#### Enter FX rates to convert to base currency")
+        currencies = sorted(income_df["currency"].unique())
+
+        fx_rates_auto = get_fx_rates_cached(
+            base_currency=base_currency,
+            currencies=currencies
+        )
+
         fx_rates = {}
-        for cur in sorted(income_df["currency"].unique()):
+        for cur in currencies:
+            if cur != base_currency and fx_rates_auto.get(cur) == 1.0:
+                st.caption(f"⚠️ Auto FX unavailable for {cur}, using 1.0")
+
             fx_rates[cur] = 1.0 if cur == base_currency else st.number_input(
                 f"{cur} → {base_currency}",
+                value=float(fx_rates_auto.get(cur)),
                 min_value=0.000001,
-                value=1.0,
-                step=0.01,
+                step=0.0001,
                 format="%.6f",
                 key=f"income_fx_{cur}_to_{base_currency}"
             )
+
+        st.session_state.fx_rates_income = fx_rates
+
 
         # Compute FX-normalized dividends
         income_df["fx_rate"] = income_df["currency"].map(fx_rates)
@@ -457,20 +487,31 @@ with tabs[2]:
 
     st.markdown("#### Enter FX rates to base currency")
 
+    fx_rates_auto = get_fx_rates_cached(
+        base_currency=base_currency,
+        currencies=currencies
+    )
+
     fx_rates = {}
     for cur in currencies:
+        if cur != base_currency and fx_rates_auto.get(cur) == 1.0:
+            st.caption(f"⚠️ Auto FX unavailable for {cur}, using 1.0")
+
         if cur == base_currency:
             fx_rates[cur] = 1.0
             st.write(f"**{cur} → {base_currency}: 1.0 (base)**")
         else:
             fx_rates[cur] = st.number_input(
                 f"{cur} → {base_currency}",
+                value=float(fx_rates_auto.get(cur)),
                 min_value=0.000001,
-                value=1.0,
-                step=0.01,
+                step=0.0001,
                 format="%.6f",
                 key=f"alloc_fx_{cur}_to_{base_currency}"
             )
+
+    st.session_state.fx_rates_allocation = fx_rates
+
 
     # Apply FX conversion
     alloc_df = summary_df.copy()
@@ -723,16 +764,29 @@ with tabs[3]:
     )
 
     st.markdown("#### Enter FX rates to convert to base currency")
+    currencies = sorted(tx_df["currency"].unique())
+
+    fx_rates_auto = get_fx_rates_cached(
+        base_currency=base_currency,
+        currencies=currencies
+    )
+
     fx_rates = {}
-    for cur in sorted(tx_df["currency"].unique()):
+    for cur in currencies:
+        if cur != base_currency and fx_rates_auto.get(cur) == 1.0:
+            st.caption(f"⚠️ Auto FX unavailable for {cur}, using 1.0")
+
         fx_rates[cur] = 1.0 if cur == base_currency else st.number_input(
             f"{cur} → {base_currency}",
+            value=float(fx_rates_auto.get(cur)),
             min_value=0.000001,
-            value=1.0,
-            step=0.01,
+            step=0.0001,
             format="%.6f",
             key=f"tx_fx_{cur}_to_{base_currency}"
         )
+
+    st.session_state.fx_rates_transactions = fx_rates
+
 
     # --- Apply Filters Button ---
     if st.button("Apply Filters"):

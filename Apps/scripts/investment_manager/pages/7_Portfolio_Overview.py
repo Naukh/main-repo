@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 from data.db_utils import get_holdings, get_transactions, get_dividends, update_holding_current_price
 from utils.calculations import compute_current_shares, calculate_weighted_avg_price, calculate_total_value, calculate_invested_value
+from utils.fx_rates import get_fx_rates_cached
 
 def color_pl(val):
     if pd.isna(val):
@@ -210,21 +211,32 @@ with st.container():
         index=0
     )
 
-    st.markdown("#### Enter FX rates (to base currency)")
+    # --- Auto-fetch FX rates ---
+    currencies = summary_df["currency"].unique().tolist()
+    fx_rates_auto = get_fx_rates_cached(
+        base_currency=base_currency,
+        currencies=currencies
+    )
+
+
+    st.caption("Auto-fetched FX rates")
 
     fx_rates = {}
-    for cur in summary_df["currency"].unique():
+    for cur in currencies:
+        if cur != base_currency and fx_rates_auto.get(cur) == 1.0:
+            st.caption(f"⚠️ Auto FX unavailable for {cur}, using 1.0")
+
         if cur == base_currency:
             fx_rates[cur] = 1.0
             st.write(f"**{cur} → {base_currency}: 1.0 (base)**")
         else:
             fx_rates[cur] = st.number_input(
                 f"{cur} → {base_currency}",
+                value=float(fx_rates_auto.get(cur)),
                 min_value=0.000001,
-                value=1.0,
-                step=0.01,
+                step=0.0001,
                 format="%.6f",
-                key=f"fx_{cur}_to_{base_currency}"
+                key=f"perf_fx_{cur}_to_{base_currency}"
             )
 
     fx_df = summary_df.copy()
