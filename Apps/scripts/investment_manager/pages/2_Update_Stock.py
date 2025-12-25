@@ -95,17 +95,19 @@ selected_to_delete = st.selectbox("Select symbol to remove", symbols_for_delete)
 # Preview selected holding
 holding_to_preview = next(h for h in holdings if h["symbol"] == selected_to_delete)
 st.write("### Selected Holding Details")
-st.table({
+preview_data = {
     "Attribute": ["Symbol", "Asset Type", "Fund Type", "Currency", "Notes", "Current Price"],
     "Value": [
-        holding_to_preview.get("symbol", ""),
-        holding_to_preview.get("asset_type", "stock"),
-        holding_to_preview.get("fund_type", ""),
-        holding_to_preview.get("currency", ""),
-        holding_to_preview.get("notes", ""),
-        holding_to_preview.get("current_price", 0.0)
+        str(holding_to_preview.get("symbol", "")),
+        str(holding_to_preview.get("asset_type", "stock")),
+        str(holding_to_preview.get("fund_type", "")),
+        str(holding_to_preview.get("currency", "")),
+        str(holding_to_preview.get("notes", "")),
+        f"{holding_to_preview.get('current_price', 0.0):,.2f}",
     ]
-})
+}
+
+st.table(preview_data)
 
 # --- Confirmation checkbox ---
 confirm_delete = st.checkbox(f"Confirm deletion of {selected_to_delete}")

@@ -2,10 +2,58 @@
 
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 from data.db_utils import get_holdings, get_transactions, get_dividends
 from utils.calculations import compute_current_shares, calculate_weighted_avg_price, calculate_total_value, calculate_invested_value
+from utils.portfolio_summary import build_portfolio_summary
 
+# Helper functions
+import plotly.express as px
+
+def render_allocation_chart(
+    df,
+    label_col,
+    value_col,
+    title,
+    chart_type,
+    color_palette
+):
+    colors = px.colors.qualitative.__dict__.get(color_palette, px.colors.qualitative.Set2)
+
+    if chart_type == "Pie":
+        fig = px.pie(
+            df,
+            names=label_col,
+            values=value_col,
+            title=title,
+            hole=0.4,
+            color_discrete_sequence=colors
+        )
+        fig.update_layout(height=420)
+
+    else:
+        y_max = df[value_col].max() * 1.15
+        fig = px.bar(
+            df,
+            x=label_col,
+            y=value_col,
+            title=title,
+            text=df[value_col].round(2).astype(str) + "%",
+            color=label_col,
+            color_discrete_sequence=colors
+        )
+        fig.update_layout(
+            yaxis=dict(title="Allocation %", range=[0, y_max]),
+            height=420,
+            showlegend=False
+        )
+
+    st.plotly_chart(fig, width="stretch")
+
+
+
+summary_df = build_portfolio_summary()
 
 st.set_page_config(page_title="Reports", layout="wide")
 st.title("📑 Reports")
@@ -271,8 +319,196 @@ with tabs[1]:
 # Allocation Report (placeholder)
 # -----------------------------
 with tabs[2]:
-    st.subheader("📊 Allocation Report")
-    st.info("Asset, currency, and fund allocation breakdowns will appear here.")
+    st.subheader("📊 Portfolio Allocation")
+
+    st.markdown("### 🎨 Visualization Settings")
+
+    color_palette = st.selectbox(
+        "Color palette",
+        options=[
+            "Set2",
+            "Pastel",
+            "Bold",
+            "Dark2",
+            "Safe",
+            "Vivid"
+        ],
+        index=0
+    )
+
+
+
+    # --- Safety checks ---
+    if summary_df is None or summary_df.empty:
+        st.info("No portfolio data available.")
+        st.stop()
+
+    required_cols = {"currency", "asset_type", "total_value"}
+    if not required_cols.issubset(summary_df.columns):
+        st.error("Portfolio summary is missing required columns.")
+        st.stop()
+
+    # =========================
+    # 🌍 FX Normalization
+    # =========================
+    st.markdown("### 🌍 FX Normalization")
+
+    currencies = sorted(summary_df["currency"].dropna().unique().tolist())
+
+    base_currency = st.selectbox(
+        "Select base currency",
+        options=currencies,
+        key="alloc_base_currency"
+    )
+
+    st.markdown("#### Enter FX rates to base currency")
+
+    fx_rates = {}
+    for cur in currencies:
+        if cur == base_currency:
+            fx_rates[cur] = 1.0
+            st.write(f"**{cur} → {base_currency}: 1.0 (base)**")
+        else:
+            fx_rates[cur] = st.number_input(
+                f"{cur} → {base_currency}",
+                min_value=0.000001,
+                value=1.0,
+                step=0.01,
+                format="%.6f",
+                key=f"alloc_fx_{cur}_to_{base_currency}"
+            )
+
+    # Apply FX conversion
+    alloc_df = summary_df.copy()
+    alloc_df["fx_rate"] = alloc_df["currency"].map(fx_rates).fillna(1.0)
+    alloc_df["total_value_fx"] = alloc_df["total_value"] * alloc_df["fx_rate"]
+
+    total_value_fx = alloc_df["total_value_fx"].sum()
+    if total_value_fx == 0:
+        st.info("Total FX-normalized portfolio value is zero.")
+        st.stop()
+
+    # =========================
+    # Allocation by Asset Type
+    # =========================
+    st.markdown("### Allocation by Asset Type")
+
+    asset_chart_type = st.radio(
+        "Chart type (Asset Allocation)",
+        ["Bar", "Pie"],
+        horizontal=True,
+        key="asset_alloc_chart"
+    )
+
+    asset_alloc = (
+        alloc_df
+        .groupby("asset_type", as_index=False)
+        .agg(total_value=("total_value_fx", "sum"))
+    )
+
+    asset_alloc["allocation_pct"] = asset_alloc["total_value"] / total_value_fx * 100
+    asset_alloc["label"] = asset_alloc["asset_type"]
+
+    st.dataframe(
+        asset_alloc.style.format({
+            "total_value": "{:,.2f}",
+            "allocation_pct": "{:.2f}%"
+        }),
+        width="stretch"
+    )
+
+    render_allocation_chart(
+        asset_alloc,
+        label_col="label",
+        value_col="allocation_pct",
+        title="Asset Allocation",
+        chart_type=asset_chart_type,
+        color_palette=color_palette
+    )
+
+    # =========================
+    # Allocation by Currency
+    # =========================
+    st.markdown("### Allocation by Currency")
+
+    currency_chart_type = st.radio(
+        "Chart type (Currency Allocation)",
+        ["Bar", "Pie"],
+        horizontal=True,
+        key="currency_alloc_chart"
+    )
+
+    currency_alloc = (
+        alloc_df
+        .groupby("currency", as_index=False)
+        .agg(total_value=("total_value_fx", "sum"))
+    )
+
+    currency_alloc["allocation_pct"] = currency_alloc["total_value"] / total_value_fx * 100
+    currency_alloc["label"] = currency_alloc["currency"]
+
+    st.dataframe(
+        currency_alloc.style.format({
+            "total_value": "{:,.2f}",
+            "allocation_pct": "{:.2f}%"
+        }),
+        width="stretch"
+    )
+
+    render_allocation_chart(
+        currency_alloc,
+        label_col="label",
+        value_col="allocation_pct",
+        title="Currency Allocation",
+        chart_type=currency_chart_type,
+        color_palette=color_palette
+    )
+
+
+
+    # =========================
+    # Allocation by Fund Type
+    # =========================
+    fund_df = alloc_df[alloc_df["asset_type"] == "index_fund"]
+
+    if not fund_df.empty:
+        st.markdown("### Allocation by Fund Type")
+
+        fund_chart_type = st.radio(
+            "Chart type (Fund Allocation)",
+            ["Bar", "Pie"],
+            horizontal=True,
+            key="fund_alloc_chart"
+        )
+
+        fund_alloc = (
+            fund_df
+            .groupby("fund_type", as_index=False)
+            .agg(total_value=("total_value_fx", "sum"))
+        )
+
+        fund_alloc["allocation_pct"] = fund_alloc["total_value"] / total_value_fx * 100
+        fund_alloc["label"] = fund_alloc["fund_type"]
+
+        st.dataframe(
+            fund_alloc.style.format({
+                "total_value": "{:,.2f}",
+                "allocation_pct": "{:.2f}%"
+            }),
+            width="stretch"
+        )
+
+        render_allocation_chart(
+            fund_alloc,
+            label_col="label",
+            value_col="allocation_pct",
+            title="Fund Allocation",
+            chart_type=fund_chart_type,
+            color_palette=color_palette
+        )
+    else:
+        st.info("No index funds in portfolio.")
+
 
 # -----------------------------
 # Transaction Report (placeholder)
