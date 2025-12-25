@@ -5,6 +5,7 @@ import pandas as pd
 import io
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
 
 from data.db_utils import get_holdings, get_transactions, get_dividends
 from utils.calculations import compute_current_shares, calculate_weighted_avg_price, calculate_total_value, calculate_invested_value
@@ -12,14 +13,7 @@ from utils.portfolio_summary import build_portfolio_summary
 
 # Helper functions
 
-def render_allocation_chart(
-    df,
-    label_col,
-    value_col,
-    title,
-    chart_type,
-    color_palette
-):
+def render_allocation_chart(df, label_col, value_col, title, chart_type, color_palette, export_dark=False):
     colors = px.colors.qualitative.__dict__.get(color_palette, px.colors.qualitative.Set2)
 
     if chart_type == "Pie":
@@ -31,8 +25,6 @@ def render_allocation_chart(
             hole=0.4,
             color_discrete_sequence=colors
         )
-        fig.update_layout(height=420)
-
     else:
         y_max = df[value_col].max() * 1.15
         fig = px.bar(
@@ -44,15 +36,15 @@ def render_allocation_chart(
             color=label_col,
             color_discrete_sequence=colors
         )
-        fig.update_layout(
-            yaxis=dict(title="Allocation %", range=[0, y_max]),
-            height=420,
-            showlegend=False
-        )
+        fig.update_layout(yaxis=dict(title="Allocation %", range=[0, y_max]), showlegend=False)
 
+    # Apply dark mode template if exporting
+    if export_dark:
+        fig.update_layout(template="plotly_dark", paper_bgcolor="#1e1e1e", plot_bgcolor="#1e1e1e")
+
+    # Display in Streamlit
     st.plotly_chart(fig, width="stretch")
-
-import plotly.graph_objects as go
+    return fig
 
 def render_rebalance(df, category_col, value_col, title, total_value_fx, 
                      primary_color="#4F8BF9", chart_type="Bar"):
@@ -141,6 +133,14 @@ def render_rebalance(df, category_col, value_col, title, total_value_fx,
         )
 
     st.plotly_chart(fig, width="stretch")
+
+
+def render_fx_table(fx_dict, label):
+    if fx_dict:
+        fx_df = pd.DataFrame(list(fx_dict.items()), columns=["Currency", "Rate to Base"])
+        html_buffer.write(fx_df.to_html(index=False, float_format="%.6f"))
+    else:
+        html_buffer.write(f"<p>No FX conversion applied for {label}.</p>")
 
 
 summary_df = build_portfolio_summary()
@@ -279,6 +279,7 @@ with tabs[0]:
     })
     fx_display_df[f"ROI% ({base_currency})"] = fx_df["total_gain_fx"] / fx_df["invested_fx"] * 100
     st.session_state.fx_display_df = fx_display_df
+    st.session_state.fx_rates_performance = fx_rates
 
     styled_fx = (
         fx_display_df
@@ -381,6 +382,7 @@ with tabs[1]:
             "total_dividend_fx": f"Dividend ({base_currency})"
         }, inplace=True)
         st.session_state.income_display_df = income_display_df
+        st.session_state.fx_rates_income = fx_rates 
 
         styled_income = (
             income_display_df
@@ -475,6 +477,7 @@ with tabs[2]:
     alloc_df["fx_rate"] = alloc_df["currency"].map(fx_rates).fillna(1.0)
     alloc_df["total_value_fx"] = alloc_df["total_value"] * alloc_df["fx_rate"]
     st.session_state.alloc_df = alloc_df
+    st.session_state.fx_rates_allocation = fx_rates
 
     total_value_fx = alloc_df["total_value_fx"].sum()
     if total_value_fx == 0:
@@ -510,14 +513,16 @@ with tabs[2]:
         width="stretch"
     )
 
-    render_allocation_chart(
+    asset_fig = render_allocation_chart(
         asset_alloc,
         label_col="label",
         value_col="allocation_pct",
         title="Asset Allocation",
         chart_type=asset_chart_type,
-        color_palette=color_palette
+        color_palette=color_palette,
+        export_dark=True
     )
+    st.session_state.asset_chart = asset_fig
 
     # Rebalancing
     with st.expander("🎯 Target Allocation by Asset Type"):
@@ -536,7 +541,6 @@ with tabs[2]:
             primary_color="#4F8BF9",
             chart_type=asset_chart_type
         )
-
 
 
 
@@ -569,14 +573,16 @@ with tabs[2]:
         width="stretch"
     )
 
-    render_allocation_chart(
+    currency_fig =render_allocation_chart(
         currency_alloc,
         label_col="label",
         value_col="allocation_pct",
         title="Currency Allocation",
         chart_type=currency_chart_type,
-        color_palette=color_palette
+        color_palette=color_palette,
+        export_dark=True
     )
+    st.session_state.currency_chart = currency_fig
 
     # Rebalancing
     with st.expander("🎯 Target Allocation by Currency"):
@@ -630,14 +636,16 @@ with tabs[2]:
             width="stretch"
         )
 
-        render_allocation_chart(
+        fund_fig = render_allocation_chart(
             fund_alloc,
             label_col="label",
             value_col="allocation_pct",
             title="Fund Allocation",
             chart_type=fund_chart_type,
-            color_palette=color_palette
+            color_palette=color_palette,
+            export_dark=True
         )
+        st.session_state.fund_chart = fund_fig
 
         # Rebalancing
         with st.expander("🎯 Target Allocation by Index funds"):
@@ -758,6 +766,7 @@ with tabs[3]:
             "total_value_fx": f"Total Value ({base_currency})"
         }, inplace=True)
         st.session_state.filtered_tx_display = filtered_tx_display
+        st.session_state.fx_rates_transactions = fx_rates
 
         st.dataframe(
             filtered_tx_display.style.format({
@@ -782,7 +791,7 @@ st.markdown("---")
 st.subheader("📥 Download Full Portfolio Report (HTML)")
 
 # --- User chooses HTML theme ---
-html_theme = st.radio("Select HTML Report Theme", options=["Light", "Dark"], horizontal=True)
+html_theme = st.radio("Select HTML Report Theme", options=["Dark", "Light"], horizontal=True)
 
 # CSS styles for tables
 css_light = """
@@ -811,13 +820,15 @@ if st.button("Generate & Download HTML Report"):
     html_buffer.write("<html><head><title>Portfolio Report</title>")
 
     # Apply chosen theme
-    html_buffer.write(css_dark if html_theme=="Dark" else css_light)
+    html_buffer.write(css_light if html_theme=="Light" else css_dark)
     html_buffer.write("</head><body>")
     html_buffer.write(f"<h1>Portfolio Report - {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}</h1>")
 
     # --- Performance ---
     if 'fx_display_df' in st.session_state and not st.session_state.fx_display_df.empty:
         html_buffer.write("<h2>📈 Performance</h2>")
+        html_buffer.write("<h3>FX Conversion Rates Used</h3>")
+        render_fx_table(st.session_state.get('fx_rates_performance'), "Performance")
         html_buffer.write(st.session_state.fx_display_df.to_html(index=False, float_format="%.2f"))
     else:
         html_buffer.write("<h2>📈 Performance</h2><p>No performance data available.</p>")
@@ -825,6 +836,8 @@ if st.button("Generate & Download HTML Report"):
     # --- Income ---
     if 'income_display_df' in st.session_state and not st.session_state.income_display_df.empty:
         html_buffer.write("<h2>💸 Income / Dividends</h2>")
+        html_buffer.write("<h3>FX Conversion Rates Used</h3>")
+        render_fx_table(st.session_state.get('fx_rates_income'), "Income / Dividends")
         html_buffer.write(st.session_state.income_display_df.to_html(index=False, float_format="%.2f"))
     else:
         html_buffer.write("<h2>💸 Income / Dividends</h2><p>No income data available.</p>")
@@ -832,13 +845,32 @@ if st.button("Generate & Download HTML Report"):
     # --- Allocation ---
     if 'alloc_df' in st.session_state and not st.session_state.alloc_df.empty:
         html_buffer.write("<h2>📊 Allocation</h2>")
+        html_buffer.write("<h3>FX Conversion Rates Used</h3>")
+        render_fx_table(st.session_state.get('fx_rates_allocation'), "Allocation")
         html_buffer.write(st.session_state.alloc_df.to_html(index=False, float_format="%.2f"))
+
+        # Plot figures
+        for chart_name, chart_fig in [
+            ("Asset Allocation", st.session_state.get("asset_chart")),
+            ("Currency Allocation", st.session_state.get("currency_chart")),
+            ("Fund Allocation", st.session_state.get("fund_chart"))
+        ]:
+            if chart_fig is not None:
+                # Convert to PNG and encode as base64
+                img_bytes = pio.to_image(chart_fig, format="png", width=800, height=400)
+                import base64
+                img_base64 = base64.b64encode(img_bytes).decode()
+                html_buffer.write(f"<h3>{chart_name}</h3>")
+                html_buffer.write(f'<img src="data:image/png;base64,{img_base64}" style="max-width:100%; height:auto;">')
+
     else:
         html_buffer.write("<h2>📊 Allocation</h2><p>No allocation data available.</p>")
 
     # --- Transactions ---
     if 'filtered_tx_display' in st.session_state and not st.session_state.filtered_tx_display.empty:
         html_buffer.write("<h2>🧾 Transactions</h2>")
+        html_buffer.write("<h3>FX Conversion Rates Used</h3>")
+        render_fx_table(st.session_state.get('fx_rates_transactions'), "Transactions")
         html_buffer.write(st.session_state.filtered_tx_display.to_html(index=False, float_format="%.2f"))
     else:
         html_buffer.write("<h2>🧾 Transactions</h2><p>No transaction data available or filters not applied.</p>")
