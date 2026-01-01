@@ -26,8 +26,7 @@ ANNUAL_INTEREST_RATE = 2.50
 MIN_PRINCIPAL_ANNUAL_PCT = 2.0
 FIXED_MONTHLY_PAYMENT = 14_000.0
 MAX_MONTHS = 2000
-now = datetime.now()
-START_MONTH = START_MONTH = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+START_MONTH = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
 # ----------------------------
@@ -61,7 +60,11 @@ def load_csv_data(csv_path):
     current_balance = df.iloc[-1]["Balance"]
 
     # The *original* loan is the first nonzero Balance in the CSV
-    original_loan = df.loc[df["Balance"] > 0, "Balance"].iloc[0]
+    nonzero_balances = df.loc[df["Balance"] > 0, "Balance"]
+    if nonzero_balances.empty:
+        raise ValueError("No positive Balance values found in CSV")
+    original_loan = nonzero_balances.iloc[0]
+
 
     return original_loan, current_balance, cumulative_principal, cumulative_interest, df
 
@@ -326,7 +329,7 @@ def write_html(
                 var table = $(this).DataTable({{
                     lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]],
                     pageLength: 25,
-                    order: [],
+                    order: [[1, 'asc']],
                     orderMulti: true,
                     searching: true,
                     paging: true,
