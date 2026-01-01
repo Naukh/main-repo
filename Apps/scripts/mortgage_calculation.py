@@ -22,11 +22,12 @@ OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 HTML_FILE = OUTPUT_DIR / "Mortgage_payment_summary.html"
 PNG_FILE = OUTPUT_DIR / "Mortgage_payment_graph.png"
 
-ANNUAL_INTEREST_RATE = 2.45
+ANNUAL_INTEREST_RATE = 2.50
 MIN_PRINCIPAL_ANNUAL_PCT = 2.0
 FIXED_MONTHLY_PAYMENT = 14_000.0
 MAX_MONTHS = 2000
-START_MONTH = datetime(2025, 10, 1)
+now = datetime.now()
+START_MONTH = START_MONTH = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
 # ----------------------------
