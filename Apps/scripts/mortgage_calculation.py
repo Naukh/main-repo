@@ -24,7 +24,7 @@ PNG_FILE = OUTPUT_DIR / "Mortgage_payment_graph.png"
 
 ANNUAL_INTEREST_RATE = 2.50
 MIN_PRINCIPAL_ANNUAL_PCT = 2.0
-FIXED_MONTHLY_PAYMENT = 14_000.0
+FIXED_MONTHLY_PAYMENT = 12_000.0
 MAX_MONTHS = 2000
 START_MONTH = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
@@ -77,13 +77,12 @@ def simulate_loan(
     cumulative_principal,
     cumulative_interest,
     original_loan,
-    max_months=2000,
 ):
     monthly_rate = annual_rate / 12.0 / 100.0
     min_monthly_principal = original_loan * (min_principal_annual_pct / 100.0) / 12.0
     rows, balance, month = [], principal_remaining, 0
 
-    while balance > 1e-8 and month < max_months:
+    while balance > 1e-8 and month < MAX_MONTHS:
         month += 1
         interest = balance * monthly_rate
         required_min_payment = interest + min_monthly_principal
@@ -376,8 +375,7 @@ def main():
         FIXED_MONTHLY_PAYMENT,
         cumulative_principal,
         cumulative_interest,
-        original_loan,
-        MAX_MONTHS
+        original_loan
     )
 
     if not sim_df.empty:
